@@ -168,13 +168,13 @@ fn every_planned_mutation_has_revalidation_preconditions() {
                                 if item.action.is_mutation() {
                                     let guards = item.preconditions.expect("mutation guards");
                                     assert_eq!(guards.required_activity, ActivityStatus::Inactive);
-                                    assert!(!guards.expected_adapter.adapter_id.is_empty());
-                                    assert!(!guards.expected_adapter.adapter_revision.is_empty());
+                                    assert_ne!(guards.expected_adapter.adapter_id, "");
+                                    assert_ne!(guards.expected_adapter.adapter_revision, "");
                                     assert_eq!(
                                         guards.expected_adapter.status,
                                         AdapterStatus::Validated
                                     );
-                                    assert!(!guards.root.mount_identity.is_empty());
+                                    assert_ne!(guards.root.mount_identity, "");
                                 }
                             }
                         }
