@@ -310,7 +310,7 @@ mod tests {
     fn store_enforces_modes_and_rejects_symlinks() {
         use std::{
             fs,
-            os::unix::fs::{MetadataExt, PermissionsExt, symlink},
+            os::unix::fs::{MetadataExt, symlink},
         };
 
         use super::CredentialStore;
