@@ -57,21 +57,25 @@ Build the **framework for multiple platforms from day one**. Enable automatic sy
 
 **Objective:** Define and prove synchronization decisions without performing I/O or mutating state.
 
+**Status:** Implementation complete locally on 2026-10-14; awaiting review, commit/push and the first GitHub Actions run before the exit gate is approved.
+
 ### Work items
 
-- [ ] Define adapter contract: path resolution, game/slot identity, file groups, compatibility, safety predicates.
-- [ ] Define activity-detection interfaces that report game/emulator state conservatively without coupling the planner to Bazzite process inspection or launcher hooks.
-- [ ] Define explicit safety policies for unsupported adapters, ambiguous identity, active/unknown activity, missing mounts, incomplete file groups, incompatible formats, remote deletion and insufficient evidence.
-- [ ] Define normalized, immutable planner inputs for discovery snapshots, file/group hashes, RomM revisions and device baselines, adapter capabilities, activity observations and policy configuration.
-- [ ] Implement a deterministic, side-effect-free reconciliation planner that produces an ordered plan with stable reason codes for upload, download, no-op, conflict, defer, unsupported and error outcomes.
-- [ ] Prohibit planner access to the filesystem, database, process table, network, implicit current time, randomness or mutable global state; all such observations enter as explicit inputs.
-- [ ] Model stale-observation preconditions on every data-changing proposed action so the executor can revalidate them later.
-- [ ] Establish continuous integration and run planner unit, table-driven and property-oriented tests on every change.
-- [ ] Cover first-sync ambiguity, including a server timestamp-based direction with different content and no common baseline, plus simultaneous changes, remote deletion, identical content, incomplete groups, active/unknown games, unsupported adapters and deterministic ordering.
+- [x] Define adapter contract: path resolution, game/slot identity, file groups, compatibility, safety predicates.
+- [x] Define activity-detection interfaces that report game/emulator state conservatively without coupling the planner to Bazzite process inspection or launcher hooks.
+- [x] Define explicit safety policies for unsupported adapters, ambiguous identity, active/unknown activity, missing mounts, incomplete file groups, incompatible formats, remote deletion and insufficient evidence.
+- [x] Define normalized, immutable planner inputs for discovery snapshots, file/group hashes, RomM revisions and device baselines, adapter capabilities, activity observations and policy configuration.
+- [x] Implement a deterministic, side-effect-free reconciliation planner that produces an ordered plan with stable reason codes for upload, download, no-op, conflict, defer, unsupported and error outcomes.
+- [x] Prohibit planner access to the filesystem, database, process table, network, implicit current time, randomness or mutable global state; all such observations enter as explicit inputs.
+- [x] Model stale-observation preconditions on every data-changing proposed action so the executor can revalidate them later.
+- [x] Establish continuous integration and run planner unit, table-driven and property-oriented tests on every change.
+- [x] Cover first-sync ambiguity, including a server timestamp-based direction with different content and no common baseline, plus simultaneous changes, remote deletion, identical content, incomplete groups, active/unknown games, unsupported adapters and deterministic ordering.
 
 **Deliverables:** Core domain library, adapter and activity contracts, safety-policy model, deterministic planner, decision/reason schema, CI configuration and automated planner tests.
 
 **Exit gate:** CI proves identical inputs produce identical ordered plans, the planner performs no I/O or mutation, every proposed mutation carries explicit revalidation preconditions, first-sync content divergence without a common baseline is a conflict regardless of timestamp ordering, unsafe and ambiguous scenarios never produce an executable write action, and real saves remain untouched.
+
+**Exit-gate evidence:** Local `cargo fmt --all -- --check`, `cargo test --workspace --all-targets`, and `cargo clippy --workspace --all-targets -- -D warnings` pass on Windows. The suite contains 16 tests, including the required decision matrix, discovery-order permutations and a 6,480-case safety/precondition cross-product. No discovery or executor component exists, so no real save path is opened. Final gate approval remains pending a successful GitHub Actions run on both Windows and Linux.
 
 ## M1B — Guarded local executor and durable state
 
