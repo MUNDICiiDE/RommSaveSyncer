@@ -81,22 +81,26 @@ Build the **framework for multiple platforms from day one**. Enable automatic sy
 
 **Objective:** Execute approved plans safely while detecting stale observations and recovering from interruption.
 
+**Status:** Implementation complete locally on 2026-10-14. The change set is awaiting user review/commit and its first Windows/Linux GitHub Actions run. No live RomM transport, production adapter, service, or real-save mutation is enabled.
+
 ### Work items
 
-- [ ] Implement read-only discovery and command-line dry-run/status output using the M1A planner; export every decision with stable reason codes.
-- [ ] Implement SQLite schema for device identity, game mapping, file/group hash, remote metadata, last common revision, retry queue, history, plans and conflicts.
-- [ ] Add database migrations, transactional journaling and idempotent restart/recovery.
-- [ ] Implement SHA-256 local integrity checks, stable-file detection, guarded atomic downloads and rollback.
-- [ ] Before every save mutation, revalidate local file/group hashes, remote revision or device baseline, path and mount identity, disk space, adapter safety predicates and current emulator/game activity.
-- [ ] Reject stale plans without modifying saves; record the changed precondition and trigger replanning or a visible conflict/blocked state.
-- [ ] Implement backup rotation (default 10 routine versions/game), protected conflict archives and disk-space checks.
-- [ ] Add per-game locks, prevention of duplicate transfer work, and explicit unsupported states.
-- [ ] Add unit, integration, property-oriented and fault-injection tests for truncation, failed rename, changed hashes, changed remote revisions, mount replacement, activity races, ambiguous mapping, simultaneous changes and interrupted recovery.
-- [ ] Extend CI to run executor, migration, restart/recovery and disposable-filesystem tests.
+- [x] Implement read-only discovery and command-line dry-run/status output using the M1A planner; export every decision with stable reason codes.
+- [x] Implement SQLite schema for device identity, game mapping, file/group hash, remote metadata, last common revision, retry queue, history, plans and conflicts.
+- [x] Add database migrations, transactional journaling and idempotent restart/recovery.
+- [x] Implement SHA-256 local integrity checks, stable-file detection, guarded atomic downloads and rollback.
+- [x] Before every save mutation, revalidate local file/group hashes, remote revision or device baseline, path and mount identity, disk space, adapter safety predicates and current emulator/game activity.
+- [x] Reject stale plans without modifying saves; record the changed precondition and trigger replanning or a visible conflict/blocked state.
+- [x] Implement backup rotation (default 10 routine versions/game), protected conflict archives and disk-space checks.
+- [x] Add per-game locks, prevention of duplicate transfer work, and explicit unsupported states.
+- [x] Add unit, integration, property-oriented and fault-injection tests for truncation, failed rename, changed hashes, changed remote revisions, mount replacement, activity races, ambiguous mapping, simultaneous changes and interrupted recovery.
+- [x] Extend CI to run executor, migration, restart/recovery and disposable-filesystem tests.
 
 **Deliverables:** Discovery and dry-run CLI, guarded executor, state database and migrations, backup/rollback engine, audit journal and automated failure tests.
 
 **Exit gate:** Disposable fixtures show no destructive action on invalid paths, stale plans, active/unknown games, ambiguous mappings, interrupted writes, missing/replaced mounts or conflicts; restart recovery is idempotent; all automated tests pass in CI; real saves remain untouched.
+
+**Exit-gate evidence:** Local `cargo fmt --all -- --check`, `cargo test --workspace --all-targets`, and `cargo clippy --workspace --all-targets -- -D warnings` pass on Windows with the pinned Rust 1.99.0 toolchain. The suite contains 36 tests, including read-only CLI and unsafe-path rejection tests plus 18 M1B disposable-filesystem/fault tests. The CI workflow now runs the entire M1A/M1B workspace on Windows and Linux. The CI portion of this gate remains pending until the user approves a commit and pushes it; no real save path or RomM account is used.
 
 ## M2 — RomM protocol and sync integration
 

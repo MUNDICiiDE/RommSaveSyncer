@@ -22,8 +22,8 @@ jobs:
           components: rustfmt
       - run: cargo fmt --all -- --check
 
-  planner:
-    name: Planner (${{ matrix.os }})
+  workspace:
+    name: M1A/M1B workspace (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:

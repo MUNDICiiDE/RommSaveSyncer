@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "items": [
+    {
+      "platform": "nds",
+      "rom_id": "fixture-rom-id",
+      "slot": "autosave",
+      "adapter": {
+        "id": "nds-fixture",
+        "revision": "1",
+        "status": "validated",
+        "save_model": "single_file",
+        "compatibility": "compatible",
+        "can_upload": true,
+        "can_download": true
+      },
+      "identity": "verified",
+      "activity": "inactive",
+      "root": "/path/to/disposable/save-fixture",
+      "files": ["game.srm"],
+      "remote": {
+        "state": "absent"
+      },
+      "baseline": {
+        "state": "none"
+      }
+    }
+  ]
+}

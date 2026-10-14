@@ -1,11 +1,15 @@
 [workspace]
-members = ["crates/romm-sync-planner"]
+members = [
+    "crates/romm-sync-cli",
+    "crates/romm-sync-core",
+    "crates/romm-sync-planner",
+]
 resolver = "3"
 
 [workspace.package]
 edition = "2024"
 license = "MIT"
-rust-version = "1.85"
+rust-version = "1.99"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
@@ -13,4 +17,13 @@ unsafe_code = "forbid"
 [workspace.lints.clippy]
 all = "deny"
 pedantic = "deny"
+
+[workspace.dependencies]
+fs2 = "0.4.3"
+rusqlite = { version = "0.40.2", features = ["backup", "bundled"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha2 = "0.11.1"
+tempfile = "3.27.0"
+thiserror = "2.0.21"
 

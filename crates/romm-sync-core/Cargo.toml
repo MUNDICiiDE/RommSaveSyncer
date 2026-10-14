@@ -1,0 +1,23 @@
+[package]
+name = "romm-sync-core"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Guarded local discovery, execution, backup, and state for RomM Save Syncer"
+
+[dependencies]
+fs2.workspace = true
+romm-sync-planner = { path = "../romm-sync-planner" }
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true
+

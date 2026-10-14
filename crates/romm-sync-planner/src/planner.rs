@@ -210,15 +210,15 @@ fn plan_one(input: &ReconciliationInput, policy: SafetyPolicy) -> PlannedItem {
         }
     }
 
-    if let RemoteSaveState::Present(remote) = &input.remote {
-        if remote.slot != input.key.slot || remote.slot != input.adapter.expected_slot {
-            return blocked(
-                input,
-                SyncState::Error,
-                PlanAction::Error,
-                ReasonCode::SlotMismatch,
-            );
-        }
+    if let RemoteSaveState::Present(remote) = &input.remote
+        && (remote.slot != input.key.slot || remote.slot != input.adapter.expected_slot)
+    {
+        return blocked(
+            input,
+            SyncState::Error,
+            PlanAction::Error,
+            ReasonCode::SlotMismatch,
+        );
     }
 
     let desired = reconcile(input, policy);
