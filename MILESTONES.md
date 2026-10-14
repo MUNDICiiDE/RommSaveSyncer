@@ -104,17 +104,19 @@ Build the **framework for multiple platforms from day one**. Enable automatic sy
 
 ## M2 — RomM protocol and sync integration
 
+**Status:** Implementation and disposable protocol tests are in place; the real RomM 5.4 disposable-environment exit test remains pending.
+
 **Objective:** Reliable two-way communication while preserving RomM's device/save-slot semantics.
 
 ### Work items
 
-- [ ] Implement versioned API adapter for the actual deployed RomM protocol.
-- [ ] Store dedicated device credentials securely with least privilege.
-- [ ] Register/identify the Beelink as a distinct sync device where supported.
-- [ ] Support protocol-requested hashes, slot metadata, server revisions, origin devices and integrity validation.
-- [ ] Implement upload/download with temporary staging, explicit success confirmation and idempotent retries.
-- [ ] Implement conflict detection based on last common version, not timestamps alone.
-- [ ] Support offline queue, reconnect behavior, exponential backoff and request timeouts.
+- [x] Implement versioned API adapter for the actual deployed RomM protocol.
+- [x] Store dedicated device credentials securely with least privilege.
+- [x] Register/identify the Beelink as a distinct sync device where supported.
+- [x] Support protocol-requested hashes, slot metadata, server revisions, origin devices and integrity validation.
+- [x] Implement upload/download with temporary staging, explicit success confirmation and idempotent retries.
+- [x] Implement conflict detection based on last common version, not timestamps alone.
+- [x] Support offline queue, reconnect behavior, exponential backoff and request timeouts.
 - [ ] Test deployed RomM `autosave` interoperability in both directions using safe disposable test saves.
 
 **Deliverables:** RomM API adapter, integration tests, sanitized trace logs, error/error-recovery guide.

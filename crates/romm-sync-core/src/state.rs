@@ -200,6 +200,16 @@ pub struct StatusSummary {
     pub history_entries: u64,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RetryEntry {
+    pub retry_id: i64,
+    pub key: GameKey,
+    pub operation: String,
+    pub attempt_count: u32,
+    pub not_before_ms: i64,
+    pub last_error: Option<String>,
+}
+
 impl StateStore {
     /// Opens a writable state database, applying transactional migrations first.
     ///
@@ -488,6 +498,117 @@ impl StateStore {
         Ok(())
     }
 
+    /// Adds or advances one durable retry without storing payload bytes or
+    /// credentials. The operation is re-planned from current state when due.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for an invalid operation, time overflow, or database
+    /// failure.
+    pub fn schedule_retry(
+        &self,
+        key: &GameKey,
+        operation: &str,
+        now_ms: i64,
+        delay_ms: u64,
+        last_error: &str,
+    ) -> Result<RetryEntry, CoreError> {
+        if !matches!(operation, "upload" | "download" | "download_confirmation") {
+            return Err(CoreError::Rejected(format!(
+                "unsupported retry operation {operation:?}"
+            )));
+        }
+        let delay = i64::try_from(delay_ms)
+            .map_err(|_| CoreError::Rejected("retry delay exceeds i64".to_owned()))?;
+        let not_before = now_ms
+            .checked_add(delay)
+            .ok_or_else(|| CoreError::Rejected("retry deadline overflow".to_owned()))?;
+        self.connection.execute(
+            "INSERT INTO retry_queue(
+                platform, rom_id, slot, operation, attempt_count, not_before_ms, last_error
+             ) VALUES (?1, ?2, ?3, ?4, 1, ?5, ?6)
+             ON CONFLICT(platform, rom_id, slot, operation) DO UPDATE SET
+                attempt_count = retry_queue.attempt_count + 1,
+                not_before_ms = excluded.not_before_ms,
+                last_error = excluded.last_error",
+            params![
+                key.platform.slug(),
+                key.rom_id,
+                key.slot.0,
+                operation,
+                not_before,
+                last_error,
+            ],
+        )?;
+        self.pending_retry(key, operation)?.ok_or_else(|| {
+            CoreError::DatabaseIntegrity("scheduled retry was not readable".to_owned())
+        })
+    }
+
+    /// Returns retry work whose backoff deadline has elapsed, in stable order.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for malformed state or a failed database query.
+    pub fn due_retries(&self, now_ms: i64) -> Result<Vec<RetryEntry>, CoreError> {
+        let mut statement = self.connection.prepare(
+            "SELECT retry_id, platform, rom_id, slot, operation, attempt_count,
+                    not_before_ms, last_error
+             FROM retry_queue
+             WHERE not_before_ms <= ?1
+             ORDER BY not_before_ms, retry_id",
+        )?;
+        let rows = statement.query_map([now_ms], parse_retry_row)?;
+        let mut retries = Vec::new();
+        for row in rows {
+            retries.push(tuple_to_retry(row?)?);
+        }
+        Ok(retries)
+    }
+
+    /// Removes a completed retry. Repeating this operation is harmless.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the delete cannot be completed.
+    pub fn clear_retry(&self, key: &GameKey, operation: &str) -> Result<(), CoreError> {
+        self.connection.execute(
+            "DELETE FROM retry_queue
+             WHERE platform = ?1 AND rom_id = ?2 AND slot = ?3 AND operation = ?4",
+            params![key.platform.slug(), key.rom_id, key.slot.0, operation],
+        )?;
+        Ok(())
+    }
+
+    /// Returns the pending retry for one operation, if any.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for malformed state or a failed database query.
+    pub fn pending_retry(
+        &self,
+        key: &GameKey,
+        operation: &str,
+    ) -> Result<Option<RetryEntry>, CoreError> {
+        let mut statement = self.connection.prepare(
+            "SELECT retry_id, platform, rom_id, slot, operation, attempt_count,
+                    not_before_ms, last_error
+             FROM retry_queue
+             WHERE platform = ?1 AND rom_id = ?2 AND slot = ?3 AND operation = ?4",
+        )?;
+        let mut rows = statement.query(params![
+            key.platform.slug(),
+            key.rom_id,
+            key.slot.0,
+            operation
+        ])?;
+        rows.next()?
+            .map(parse_retry_row)
+            .transpose()?
+            .map(tuple_to_retry)
+            .transpose()
+    }
+
     /// Returns aggregate read-only status counts for the CLI.
     ///
     /// # Errors
@@ -548,6 +669,48 @@ impl StateStore {
         u64::try_from(value)
             .map_err(|_| CoreError::DatabaseIntegrity("negative row count".to_owned()))
     }
+}
+
+type RetryRow = (
+    i64,
+    String,
+    String,
+    String,
+    String,
+    i64,
+    i64,
+    Option<String>,
+);
+
+fn parse_retry_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<RetryRow> {
+    Ok((
+        row.get(0)?,
+        row.get(1)?,
+        row.get(2)?,
+        row.get(3)?,
+        row.get(4)?,
+        row.get(5)?,
+        row.get(6)?,
+        row.get(7)?,
+    ))
+}
+
+fn tuple_to_retry(row: RetryRow) -> Result<RetryEntry, CoreError> {
+    let (retry_id, platform, rom_id, slot, operation, attempts, not_before_ms, last_error) = row;
+    let attempt_count = u32::try_from(attempts)
+        .map_err(|_| CoreError::DatabaseIntegrity("invalid retry attempt count".to_owned()))?;
+    Ok(RetryEntry {
+        retry_id,
+        key: GameKey {
+            platform: parse_platform(&platform)?,
+            rom_id,
+            slot: romm_sync_planner::SlotId(slot),
+        },
+        operation,
+        attempt_count,
+        not_before_ms,
+        last_error,
+    })
 }
 
 fn prepare_migration_backup(path: &Path) -> Result<(), CoreError> {

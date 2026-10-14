@@ -1,7 +1,7 @@
 use std::{
     collections::VecDeque,
     fs::{self, OpenOptions},
-    path::Path,
+    path::{Path, PathBuf},
     sync::Mutex,
     time::Duration,
 };
@@ -16,6 +16,8 @@ struct FakeRemote {
     observations: VecDeque<RemoteSaveState>,
     payload: Option<SavePayload>,
     upload_revision: String,
+    confirmation_probe: Option<PathBuf>,
+    confirmations: usize,
 }
 
 impl FakeRemote {
@@ -24,6 +26,8 @@ impl FakeRemote {
             observations: VecDeque::from([state]),
             payload,
             upload_revision: "uploaded-r2".to_owned(),
+            confirmation_probe: None,
+            confirmations: 0,
         }
     }
 
@@ -32,6 +36,8 @@ impl FakeRemote {
             observations: states.into_iter().collect(),
             payload: None,
             upload_revision: "uploaded-r2".to_owned(),
+            confirmation_probe: None,
+            confirmations: 0,
         }
     }
 }
@@ -78,6 +84,26 @@ impl RemoteTransport for FakeRemote {
         };
         self.observations = VecDeque::from([RemoteSaveState::Present(receipt.clone())]);
         Ok(receipt)
+    }
+
+    fn confirm_download(
+        &mut self,
+        _key: &GameKey,
+        _committed: &RemoteSaveSnapshot,
+    ) -> Result<(), CoreError> {
+        if let Some(path) = &self.confirmation_probe
+            && fs::read(path).map_err(|source| CoreError::Io {
+                operation: "read confirmation probe",
+                path: path.clone(),
+                source,
+            })? != b"new"
+        {
+            return Err(CoreError::Remote(
+                "download was acknowledged before local commit".to_owned(),
+            ));
+        }
+        self.confirmations += 1;
+        Ok(())
     }
 }
 
@@ -298,6 +324,7 @@ fn verified_download_backs_up_and_atomically_replaces() -> Result<(), CoreError>
         content: sha256_bytes(b"new"),
     };
     let mut remote = FakeRemote::new(RemoteSaveState::Present(remote_snapshot), Some(payload));
+    remote.confirmation_probe = Some(root.join("game.srm"));
     let store = StateStore::open_in_memory()?;
     let outcome = executor(&temp).execute(
         &store,
@@ -315,7 +342,28 @@ fn verified_download_backs_up_and_atomically_replaces() -> Result<(), CoreError>
     assert_eq!(fs::read(root.join("game.srm")).unwrap(), b"new");
     let backup = backup_path.expect("existing save must be backed up");
     assert_eq!(fs::read(backup.join("game.srm")).unwrap(), b"old");
+    assert_eq!(remote.confirmations, 1);
     assert_eq!(store.status()?.unfinished_executions, 0);
+    Ok(())
+}
+
+#[test]
+fn retry_queue_is_durable_ordered_and_idempotently_cleared() -> Result<(), CoreError> {
+    let store = StateStore::open_in_memory()?;
+    let game = key(Platform::NintendoDs, "rom-retry");
+    let first = store.schedule_retry(&game, "upload", 1_000, 250, "offline")?;
+    assert_eq!(first.attempt_count, 1);
+    assert_eq!(first.not_before_ms, 1_250);
+    assert_eq!(store.due_retries(1_249)?, Vec::<RetryEntry>::new());
+
+    let second = store.schedule_retry(&game, "upload", 2_000, 500, "still offline")?;
+    assert_eq!(second.retry_id, first.retry_id);
+    assert_eq!(second.attempt_count, 2);
+    assert_eq!(store.due_retries(2_500)?, vec![second]);
+
+    store.clear_retry(&game, "upload")?;
+    store.clear_retry(&game, "upload")?;
+    assert_eq!(store.due_retries(i64::MAX)?, Vec::<RetryEntry>::new());
     Ok(())
 }
 

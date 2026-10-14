@@ -3,6 +3,7 @@ members = [
     "crates/romm-sync-cli",
     "crates/romm-sync-core",
     "crates/romm-sync-planner",
+    "crates/romm-sync-romm",
 ]
 resolver = "3"
 
@@ -20,10 +21,14 @@ pedantic = "deny"
 
 [workspace.dependencies]
 fs2 = "0.4.3"
+md-5 = "0.11.0"
+reqwest = { version = "0.13.5", default-features = false, features = ["blocking", "json", "multipart", "query", "rustls"] }
 rusqlite = { version = "0.40.2", features = ["backup", "bundled"] }
+rustix = { version = "1.1.5", features = ["process"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 sha2 = "0.11.1"
 tempfile = "3.27.0"
 thiserror = "2.0.21"
+url = "2.5.8"
 

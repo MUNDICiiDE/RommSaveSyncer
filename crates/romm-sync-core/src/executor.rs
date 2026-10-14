@@ -76,6 +76,27 @@ pub trait RemoteTransport {
         payload: &SavePayload,
         expected: &ExpectedRemoteState,
     ) -> Result<RemoteSaveSnapshot, CoreError>;
+
+    /// Acknowledges a download after its payload has been atomically committed
+    /// and read back from the live save path.
+    ///
+    /// Transports without an acknowledgement protocol may use the default.
+    /// `RomM` uses this hook for `POST /api/saves/{id}/downloaded`; doing it in
+    /// `download` would advance the device baseline before the local write is
+    /// known to be durable.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the remote acknowledgement is not durably
+    /// accepted. The committed local save is preserved and no sync baseline is
+    /// recorded, allowing a later idempotent retry.
+    fn confirm_download(
+        &mut self,
+        _key: &GameKey,
+        _committed: &RemoteSaveSnapshot,
+    ) -> Result<(), CoreError> {
+        Ok(())
+    }
 }
 
 pub trait ActivityProbe {
@@ -668,6 +689,24 @@ impl GuardedExecutor {
         }
 
         let bytes = staged_group.total_size;
+        if let Err(error) = remote.confirm_download(&request.planned.key, &expected_remote) {
+            remove_directory_if_exists(&stage_path)?;
+            store.update_journal(
+                journal_id,
+                JournalState::Failed,
+                None,
+                None,
+                Some(&error.to_string()),
+            )?;
+            store.record_history(
+                &request.planned.key,
+                "download_confirmation",
+                "failed",
+                Some("local_commit_verified_remote_confirmation_pending"),
+                bytes,
+            )?;
+            return Err(error);
+        }
         store.upsert_baseline(
             &request.planned.key,
             &staged_group.content.digest,
