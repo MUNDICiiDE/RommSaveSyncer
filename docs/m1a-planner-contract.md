@@ -1,6 +1,6 @@
 # M1A Planner Contract
 
-**Status:** Implemented for local review; CI will become authoritative after these changes are pushed.
+**Status:** Complete. Local validation and Windows/Linux GitHub Actions passed on 2026-10-14.
 
 ## Boundary
 

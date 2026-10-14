@@ -57,7 +57,7 @@ Build the **framework for multiple platforms from day one**. Enable automatic sy
 
 **Objective:** Define and prove synchronization decisions without performing I/O or mutating state.
 
-**Status:** Implementation complete locally on 2026-10-14; awaiting review, commit/push and the first GitHub Actions run before the exit gate is approved.
+**Status:** Complete on 2026-10-14. The implementation is committed and the Windows/Linux GitHub Actions gate passed.
 
 ### Work items
 
@@ -75,7 +75,7 @@ Build the **framework for multiple platforms from day one**. Enable automatic sy
 
 **Exit gate:** CI proves identical inputs produce identical ordered plans, the planner performs no I/O or mutation, every proposed mutation carries explicit revalidation preconditions, first-sync content divergence without a common baseline is a conflict regardless of timestamp ordering, unsafe and ambiguous scenarios never produce an executable write action, and real saves remain untouched.
 
-**Exit-gate evidence:** Local `cargo fmt --all -- --check`, `cargo test --workspace --all-targets`, and `cargo clippy --workspace --all-targets -- -D warnings` pass on Windows. The suite contains 16 tests, including the required decision matrix, discovery-order permutations and a 6,480-case safety/precondition cross-product. No discovery or executor component exists, so no real save path is opened. Final gate approval remains pending a successful GitHub Actions run on both Windows and Linux.
+**Exit-gate evidence:** Local `cargo fmt --all -- --check`, `cargo test --workspace --all-targets`, and `cargo clippy --workspace --all-targets -- -D warnings` pass on Windows with the pinned Rust 1.99.0 toolchain. GitHub Actions run [38639777999](https://github.com/MUNDICiiDE/RommSaveSyncer/actions/runs/38639777999) passed its format job and planner jobs on both Windows and Linux. The suite contains 16 tests, including the required decision matrix, discovery-order permutations and a 6,480-case safety/precondition cross-product. No discovery or executor component exists, so no real save path is opened.
 
 ## M1B — Guarded local executor and durable state
 
