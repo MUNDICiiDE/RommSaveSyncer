@@ -23,12 +23,8 @@ jobs:
       - run: cargo fmt --all -- --check
 
   workspace:
-    name: M1A/M1B workspace (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+    name: Bazzite-target Linux workspace
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@1.99.0

@@ -57,7 +57,7 @@ Build the **framework for multiple platforms from day one**. Enable automatic sy
 
 **Objective:** Define and prove synchronization decisions without performing I/O or mutating state.
 
-**Status:** Complete on 2026-10-14. The implementation is committed and the Windows/Linux GitHub Actions gate passed.
+**Status:** Complete on 2026-10-14. The implementation is committed and the Linux GitHub Actions gate passed. Bazzite/Linux is the only supported runtime target.
 
 ### Work items
 
@@ -75,13 +75,13 @@ Build the **framework for multiple platforms from day one**. Enable automatic sy
 
 **Exit gate:** CI proves identical inputs produce identical ordered plans, the planner performs no I/O or mutation, every proposed mutation carries explicit revalidation preconditions, first-sync content divergence without a common baseline is a conflict regardless of timestamp ordering, unsafe and ambiguous scenarios never produce an executable write action, and real saves remain untouched.
 
-**Exit-gate evidence:** Local `cargo fmt --all -- --check`, `cargo test --workspace --all-targets`, and `cargo clippy --workspace --all-targets -- -D warnings` pass on Windows with the pinned Rust 1.99.0 toolchain. GitHub Actions run [38639777999](https://github.com/MUNDICiiDE/RommSaveSyncer/actions/runs/38639777999) passed its format job and planner jobs on both Windows and Linux. The suite contains 16 tests, including the required decision matrix, discovery-order permutations and a 6,480-case safety/precondition cross-product. No discovery or executor component exists, so no real save path is opened.
+**Exit-gate evidence:** GitHub Actions run [38639777999](https://github.com/MUNDICiiDE/RommSaveSyncer/actions/runs/38639777999) passed its Linux format, test and Clippy jobs with the pinned Rust 1.99.0 toolchain. The suite contains 16 tests, including the required decision matrix, discovery-order permutations and a 6,480-case safety/precondition cross-product. No discovery or executor component exists, so no real save path is opened. Checks run on a Windows development workstation are incidental and are not platform qualification.
 
 ## M1B — Guarded local executor and durable state
 
 **Objective:** Execute approved plans safely while detecting stale observations and recovering from interruption.
 
-**Status:** Implementation complete locally on 2026-10-14. The change set is awaiting user review/commit and its first Windows/Linux GitHub Actions run. No live RomM transport, production adapter, service, or real-save mutation is enabled.
+**Status:** Complete on 2026-10-14. The implementation is committed and its Linux GitHub Actions gate passed. Bazzite/Linux is the only supported runtime target. No live RomM transport, production adapter, service, or real-save mutation is enabled.
 
 ### Work items
 
@@ -100,7 +100,7 @@ Build the **framework for multiple platforms from day one**. Enable automatic sy
 
 **Exit gate:** Disposable fixtures show no destructive action on invalid paths, stale plans, active/unknown games, ambiguous mappings, interrupted writes, missing/replaced mounts or conflicts; restart recovery is idempotent; all automated tests pass in CI; real saves remain untouched.
 
-**Exit-gate evidence:** Local `cargo fmt --all -- --check`, `cargo test --workspace --all-targets`, and `cargo clippy --workspace --all-targets -- -D warnings` pass on Windows with the pinned Rust 1.99.0 toolchain. The suite contains 36 tests, including read-only CLI and unsafe-path rejection tests plus 18 M1B disposable-filesystem/fault tests. The CI workflow now runs the entire M1A/M1B workspace on Windows and Linux. The CI portion of this gate remains pending until the user approves a commit and pushes it; no real save path or RomM account is used.
+**Exit-gate evidence:** The committed M1B GitHub Actions run passed its Linux format, test and Clippy jobs with the pinned Rust 1.99.0 toolchain. The suite contains 36 tests, including read-only CLI and unsafe-path rejection tests plus 18 M1B disposable-filesystem/fault tests. Required CI now runs the entire M1A/M1B workspace on Linux only; checks run on a Windows development workstation are incidental and are not platform qualification. No real save path or RomM account is used.
 
 ## M2 — RomM protocol and sync integration
 

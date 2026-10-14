@@ -1,6 +1,6 @@
 # M1B Guarded Executor Contract
 
-**Status:** Implementation complete locally on 2026-10-14. Windows validation passes; the first Windows/Linux CI run for this change set is pending commit and push.
+**Status:** Complete on 2026-10-14. The committed implementation passed its Linux GitHub Actions gate. Bazzite/Linux is the only supported runtime target.
 
 ## Boundary
 
@@ -71,7 +71,7 @@ Each game/platform/slot has a cross-process nonblocking file lock. A stale guard
 
 Downloads are staged beneath the destination filesystem. The payload manifest, size, and group SHA-256 are verified before the live path is touched. Existing files receive a copied and verified routine backup, then the journal advances through `prepared`, `staged`, `backed_up`, and `replacing`. Each member is replaced from the same filesystem and the completed live group is re-hashed before the baseline is committed.
 
-On Bazzite/Linux, a single-file replacement uses same-filesystem `rename`, which is atomic. A multi-file group cannot be atomically committed as one filesystem operation; it is protected by a durable journal, a complete verified group backup, fail-fast replacement, and full-group rollback. Windows development builds use a journaled rename/restore fallback and are tested for rollback, but do not claim a single primitive equivalent to Linux replacement.
+On Bazzite/Linux, a single-file replacement uses same-filesystem `rename`, which is atomic. A multi-file group cannot be atomically committed as one filesystem operation; it is protected by a durable journal, a complete verified group backup, fail-fast replacement, and full-group rollback. Behavior on Windows is not a project requirement and is not qualified or supported.
 
 Routine backups retain ten versions per game by default. A configurable routine-storage cap may prune older routine versions, but never the backup protecting the current transaction. Conflict archives live in a separate tree and are excluded from automatic routine pruning. Backups are verified at creation and every member is preflighted again before recovery changes any live file.
 
@@ -97,7 +97,7 @@ cargo test --workspace --all-targets
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-GitHub Actions runs the same workspace tests and Clippy checks on Windows and Linux. No test references or modifies a real save.
+GitHub Actions runs the workspace tests and Clippy checks on Linux. This verifies Linux semantics but does not replace later physical qualification on the actual Bazzite system. No test references or modifies a real save.
 
 ## Decisions deliberately deferred
 
