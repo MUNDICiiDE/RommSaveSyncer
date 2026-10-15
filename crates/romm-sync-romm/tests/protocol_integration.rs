@@ -226,6 +226,12 @@ fn lost_upload_response_reconciles_by_hash_without_duplicate_post() {
     let server = ScriptServer::start(vec![
         heartbeat("5.4.0"),
         Step {
+            method: "GET",
+            path_contains: "/api/saves?rom_id=1234",
+            body_contains: None,
+            response: json(200, "[]"),
+        },
+        Step {
             method: "POST",
             path_contains: "/api/saves?",
             body_contains: Some("disposable-save"),
@@ -250,14 +256,21 @@ fn lost_upload_response_reconciles_by_hash_without_duplicate_post() {
             .count(),
         1
     );
-    assert!(requests[1].contains("overwrite=false"));
+    assert!(requests[2].contains("overwrite=false"));
     assert!(!requests.iter().any(|request| request.starts_with("PUT ")));
 }
 
 #[test]
 fn guarded_conflict_never_falls_back_to_overwrite() {
+    let changed = r#"[{"id":88,"rom_id":1234,"file_name":"mario.sav","slot":"autosave","content_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","file_size_bytes":8,"updated_at":"2026-10-14T11:00:00Z"}]"#;
     let server = ScriptServer::start(vec![
         heartbeat("5.4.0"),
+        Step {
+            method: "GET",
+            path_contains: "/api/saves?rom_id=1234",
+            body_contains: None,
+            response: json(200, changed),
+        },
         Step {
             method: "POST",
             path_contains: "/api/saves?",
@@ -268,10 +281,7 @@ fn guarded_conflict_never_falls_back_to_overwrite() {
             method: "GET",
             path_contains: "/api/saves?rom_id=1234",
             body_contains: None,
-            response: json(
-                200,
-                r#"[{"id":88,"rom_id":1234,"file_name":"mario.sav","slot":"autosave","content_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","file_size_bytes":8,"updated_at":"2026-10-14T11:00:00Z"}]"#,
-            ),
+            response: json(200, changed),
         },
     ]);
     let error = client(&server.origin)
@@ -280,6 +290,55 @@ fn guarded_conflict_never_falls_back_to_overwrite() {
     assert!(matches!(error, RomMError::Conflict));
     let requests = server.finish();
     assert!(!requests.iter().any(|request| request.starts_with("PUT ")));
+}
+
+#[test]
+fn completed_upload_retry_is_a_read_only_no_op() {
+    let bytes = b"already-uploaded";
+    let digest = md5_hex(bytes);
+    let saves = format!(
+        r#"[{{"id":91,"rom_id":1234,"file_name":"mario.sav","slot":"autosave","content_hash":"{digest}","file_size_bytes":{},"updated_at":"2026-10-14T11:00:00Z"}}]"#,
+        bytes.len()
+    );
+    let server = ScriptServer::start(vec![
+        heartbeat("5.4.0"),
+        Step {
+            method: "GET",
+            path_contains: "/api/saves?rom_id=1234",
+            body_contains: None,
+            response: json(200, &saves),
+        },
+    ]);
+    let outcome = client(&server.origin)
+        .upload_autosave(1234, 42, "autosave", "mario.sav", bytes.to_vec())
+        .expect("identical head is already complete");
+    assert!(matches!(outcome, UploadOutcome::AlreadyPresent(save) if save.id == 91));
+    let requests = server.finish();
+    assert_eq!(requests.len(), 2);
+    assert!(
+        !requests
+            .iter()
+            .any(|request| request.starts_with("POST /api/saves?"))
+    );
+}
+
+#[test]
+fn save_listing_rejects_rows_for_other_roms() {
+    let server = ScriptServer::start(vec![Step {
+        method: "GET",
+        path_contains: "/api/saves?rom_id=1234",
+        body_contains: None,
+        response: json(
+            200,
+            r#"[{"id":91,"rom_id":1234,"file_name":"mario.sav","slot":"autosave","content_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","updated_at":"2026-10-14T11:00:00Z"},{"id":92,"rom_id":9999,"file_name":"other.sav","slot":"autosave","content_hash":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","updated_at":"2026-10-14T12:00:00Z"}]"#,
+        ),
+    }]);
+
+    let saves = client(&server.origin).list_saves(1234).expect("save list");
+
+    assert_eq!(saves.len(), 1);
+    assert_eq!(saves[0].rom_id, 1234);
+    server.finish();
 }
 
 #[test]

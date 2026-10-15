@@ -12,7 +12,7 @@
 - device authorization with exactly `roms.read`, `platforms.read`, `assets.read`, `assets.write`, `devices.read` and `devices.write`;
 - a device-bound credential containing the normalized server origin, device ID, granted scopes, expiry and bearer token;
 - negotiation using explicit `autosave` slots and a separate MD5 wire digest;
-- `POST /api/saves` uploads with `overwrite=false`, version retention, and no `PUT` fallback;
+- upload preflight by visible slot-head hash, followed when needed by `POST /api/saves` with `overwrite=false`, version retention, and no `PUT` fallback;
 - downloads with `optimistic=false`, MD5/size validation, and a separate post-commit acknowledgement;
 - sync-session completion with explicit completed/failed counts;
 - capped exponential retry timing and the durable SQLite retry queue;
@@ -27,8 +27,9 @@ Upload:
 1. M1B revalidates adapter, local hashes, remote revision, mount, activity and free space.
 2. The adapter stages the exact payload and the client computes RomM's MD5 independently from the internal SHA-256.
 3. The transport re-observes the slot immediately before `POST /api/saves`.
-4. The request uses `overwrite=false`; a changed slot is a conflict.
-5. The returned ROM, slot and MD5 must match before the common baseline is advanced.
+4. A matching visible head makes a completed retry a read-only success without another POST.
+5. Otherwise the request uses `overwrite=false`; a changed slot is a conflict.
+6. The returned ROM, slot and MD5 must match before the common baseline is advanced.
 
 Download:
 
@@ -91,15 +92,56 @@ cargo fmt --all -- --check
 
 CI runs these commands on Linux. Linux CI also exercises the Unix credential-file mode, ownership and symlink tests.
 
+## Guarded Bazzite qualification harness
+
+`romm-m2-qualify` is a temporary Bazzite/Linux-only milestone tool. The approved M2 fixture is the disposable **Super Mario 64 DS** save. **Kirby Air Ride** is reserved for M3 because its per-game Dolphin GCI structure is an adapter concern, not a generic RomM transport test.
+
+The DS command operates on an isolated copy and never writes the supplied live `.srm` path. Before changing RomM it requires a new workspace, a regular non-symlink `.srm`, an existing remote `.sav` head with different bytes, and no more than seven retained autosave versions. It then:
+
+1. copies and syncs the local `.srm` into the new workspace;
+2. downloads and verifies the original remote `.sav` with `optimistic=false`;
+3. proves that the pure planner classifies the baseline-free divergence as a conflict;
+4. confirms the staged download only after writing and reading it back;
+5. establishes that remote revision as the test device baseline;
+6. uploads the copied local bytes as `.sav`, verifies the head, and repeats the upload to prove the retry is a read-only no-op;
+7. uploads the downloaded original bytes to restore the remote head; and
+8. verifies that the live `.srm` remained byte-identical throughout.
+
+The exercise intentionally retains two additional RomM versions: the temporary local revision and the restored original revision. RomM's configured ten-version autocleanup is left enabled, so the harness refuses to start when more than seven versions already exist. The workspace and downloaded original remain on disk as recovery evidence. If execution stops after the first upload but before restoration, do not rerun with a new workspace: preserve the existing workspace and restore `downloaded-remote.sav` through RomM before proceeding.
+
+Pair from the checked-out repository on Bazzite:
+
+```bash
+cargo run -p romm-sync-cli --bin romm-m2-qualify -- \
+  pair 'http://ROMM-LAN-HOST:PORT' \
+  "$HOME/.config/romm-autosync/credentials.json" \
+  --allow-insecure-http
+```
+
+The command prints RomM's verification path and one-time user code, waits for approval, and saves the resulting credential with directory mode `0700` and file mode `0600`. It never prints the bearer token. The insecure-HTTP flag is required only for the current direct Synology LAN deployment; it sends the token and save bytes without transport encryption and must not be used across an untrusted network.
+
+After closing RetroArch and obtaining the already-audited numeric RomM ROM ID, run:
+
+```bash
+cargo run -p romm-sync-cli --bin romm-m2-qualify -- \
+  nds "$HOME/.config/romm-autosync/credentials.json" ROM_ID \
+  "$HOME/Emulation/saves/retroarch/saves/SUPER_MARIO_64_DS.srm" \
+  "$HOME/romm-m2-sm64ds-qualification" \
+  --allow-insecure-http \
+  --confirm-disposable-romm-mutation
+```
+
+Replace the placeholder filename with the actual single `.srm` path; quote it when it contains spaces. The output is a sanitized JSON report containing check names and counts, never the server address, device ID, ROM ID/title, filename, hashes, token, authorization code or save bytes. A failed run does not satisfy the milestone gate.
+
 ## Remaining disposable RomM gate
 
-The M2 exit gate is not yet claimed. Before M2 is marked complete, use an isolated RomM 5.4.x test user, device and ROM/save—not a live save—to capture sanitized evidence for:
+The M2 exit gate is not yet claimed. The guarded DS harness covers the real-server bidirectional byte transfer, first-sync conflict, completion, retry deduplication and restoration portions. Before M2 is marked complete, capture the harness report and complete the remaining disposable RomM 5.4.x checks for:
 
-1. device authorization and revocation;
-2. an initial upload into an empty `autosave` slot;
-3. an `optimistic=false` download followed by confirmation only after local commit;
-4. retry after an intentionally lost response, proving no duplicate version;
-5. a competing-device slot change returning 409 and preserving both copies;
-6. session completion counts and reconnect after a temporary outage.
+1. device revocation and rejection of the revoked credential;
+2. retry after an intentionally lost live response, proving no duplicate version;
+3. a competing disposable-device slot change returning 409 and preserving both copies; and
+4. reconnect and queued retry after a temporary outage.
+
+Initial upload into a truly empty slot remains an automated protocol fixture rather than part of this selected live-ROM exercise because Super Mario 64 DS already has retained history. If the milestone gate requires that case against the deployed server, create a separate disposable RomM ROM/save fixture instead of deleting this history.
 
 The evidence must record version, route template, status, operation counts, slot, extension, size and whether hashes matched. It must not contain server address, device ID, ROM title/ID, filename, token, authorization code, raw response body or save bytes.

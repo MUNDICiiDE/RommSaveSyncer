@@ -283,6 +283,11 @@ impl RomMClient {
         let credential = self.credential()?;
         validate_slot(slot)?;
         let digest = md5_hex(&bytes);
+        if let Some(existing) = self.latest_save(rom_id, slot)?
+            && existing.content_hash.as_deref() == Some(digest.as_str())
+        {
+            return Ok(UploadOutcome::AlreadyPresent(existing));
+        }
         let url = self.endpoint(SAVES_ROUTE)?;
         let form = multipart::Form::new().part(
             "saveFile",
@@ -445,6 +450,23 @@ impl RomMClient {
     /// Returns an error for API or schema failure.
     pub fn latest_save(&self, rom_id: i64, slot: &str) -> Result<Option<SaveRecord>, RomMError> {
         validate_slot(slot)?;
+        Ok(self
+            .list_saves(rom_id)?
+            .into_iter()
+            .filter(|record| record.rom_id == rom_id && record.slot.as_deref() == Some(slot))
+            .max_by(|left, right| {
+                left.updated_at
+                    .cmp(&right.updated_at)
+                    .then(left.id.cmp(&right.id))
+            }))
+    }
+
+    /// Lists the caller's retained save versions for one ROM.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for API or schema failure.
+    pub fn list_saves(&self, rom_id: i64) -> Result<Vec<SaveRecord>, RomMError> {
         let _credential = self.credential()?;
         let url = self.endpoint(SAVES_ROUTE)?;
         let response = self.send(
@@ -456,12 +478,8 @@ impl RomMClient {
         Ok(records
             .into_records()
             .into_iter()
-            .filter(|record| record.rom_id == rom_id && record.slot.as_deref() == Some(slot))
-            .max_by(|left, right| {
-                left.updated_at
-                    .cmp(&right.updated_at)
-                    .then(left.id.cmp(&right.id))
-            }))
+            .filter(|record| record.rom_id == rom_id)
+            .collect())
     }
 
     fn credential(&self) -> Result<&DeviceCredential, RomMError> {

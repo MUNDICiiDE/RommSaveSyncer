@@ -10,9 +10,19 @@ description = "Read-only discovery, dry-run, and status CLI for RomM Save Syncer
 name = "romm-sync"
 path = "src/main.rs"
 
+[[bin]]
+name = "romm-m2-qualify"
+path = "src/m2_qualify.rs"
+
 [dependencies]
 romm-sync-core = { path = "../romm-sync-core" }
+romm-sync-planner = { path = "../romm-sync-planner" }
+romm-sync-romm = { path = "../romm-sync-romm" }
+serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
+time.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
