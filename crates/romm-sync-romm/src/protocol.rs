@@ -11,12 +11,12 @@ pub const REQUIRED_SCOPES: [&str; 6] = [
 
 #[derive(Clone, Debug, Serialize)]
 pub struct DeviceAuthorizationRequest {
-    pub device_id: String,
-    pub device_name: String,
-    pub client_name: String,
+    pub client_device_identifier: String,
+    pub name: String,
+    pub client: String,
     pub client_version: String,
     pub platform: String,
-    pub scopes: Vec<String>,
+    pub requested_scopes: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]

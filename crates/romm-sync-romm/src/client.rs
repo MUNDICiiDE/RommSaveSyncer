@@ -180,7 +180,7 @@ impl RomMClient {
         mut request: DeviceAuthorizationRequest,
     ) -> Result<DeviceAuthorization, RomMError> {
         self.ensure_compatible()?;
-        request.scopes = REQUIRED_SCOPES
+        request.requested_scopes = REQUIRED_SCOPES
             .iter()
             .map(|scope| (*scope).to_owned())
             .collect();

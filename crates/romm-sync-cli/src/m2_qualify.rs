@@ -97,12 +97,12 @@ fn pair(
     let config = ClientConfig::new(origin)?.with_insecure_http(allow_insecure_http);
     let client = RomMClient::for_pairing(config)?;
     let authorization = client.begin_device_authorization(DeviceAuthorizationRequest {
-        device_id: stable_device_id()?,
-        device_name: "Beelink RomM Save Syncer".to_owned(),
-        client_name: "romm-autosync".to_owned(),
+        client_device_identifier: stable_device_id()?,
+        name: "Beelink RomM Save Syncer".to_owned(),
+        client: "romm-autosync".to_owned(),
         client_version: env!("CARGO_PKG_VERSION").to_owned(),
         platform: "bazzite".to_owned(),
-        scopes: Vec::new(),
+        requested_scopes: Vec::new(),
     })?;
     println!("verification_path={}", authorization.verification_path);
     println!("user_code={}", authorization.user_code);

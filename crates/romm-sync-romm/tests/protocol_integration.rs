@@ -416,8 +416,8 @@ fn device_authorization_returns_a_bound_exact_scope_credential() {
             path_contains: "/api/auth/device/init",
             body_contains: Some("\"devices.write\""),
             response: json(
-                200,
-                r#"{"device_code":"long-code","user_code":"1234-5678","verification_path":"/settings/devices","expires_in":600,"interval":5}"#,
+                201,
+                r#"{"device_code":"long-code","user_code":"1234-5678","verification_path":"/pair/device","verification_path_complete":"/pair/device?user_code=1234-5678","expires_in":600,"interval":5}"#,
             ),
         },
         Step {
@@ -438,12 +438,12 @@ fn device_authorization_returns_a_bound_exact_scope_credential() {
     let api = RomMClient::for_pairing(config).expect("pairing client");
     let authorization = api
         .begin_device_authorization(DeviceAuthorizationRequest {
-            device_id: "beelink-device".to_owned(),
-            device_name: "Beelink".to_owned(),
-            client_name: "romm-autosync".to_owned(),
+            client_device_identifier: "beelink-device".to_owned(),
+            name: "Beelink".to_owned(),
+            client: "romm-autosync".to_owned(),
             client_version: "0.1.0".to_owned(),
             platform: "bazzite".to_owned(),
-            scopes: vec!["must-be-replaced".to_owned()],
+            requested_scopes: vec!["must-be-replaced".to_owned()],
         })
         .expect("authorization");
     assert_eq!(authorization.interval, 5);
@@ -456,7 +456,36 @@ fn device_authorization_returns_a_bound_exact_scope_credential() {
     assert_eq!(credential.device_id, "beelink-device");
     assert_eq!(credential.granted_scopes, exact_scope_set());
     let requests = server.finish();
-    assert!(!requests[1].contains("must-be-replaced"));
+    let body = requests[1]
+        .split_once("\r\n\r\n")
+        .expect("request contains header separator")
+        .1;
+    let payload: serde_json::Value = serde_json::from_str(body).expect("valid JSON request");
+    assert_eq!(
+        payload["client_device_identifier"],
+        serde_json::json!("beelink-device")
+    );
+    assert_eq!(payload["name"], serde_json::json!("Beelink"));
+    assert_eq!(payload["client"], serde_json::json!("romm-autosync"));
+    assert_eq!(payload["client_version"], serde_json::json!("0.1.0"));
+    assert_eq!(payload["platform"], serde_json::json!("bazzite"));
+    assert_eq!(
+        payload["requested_scopes"],
+        serde_json::json!([
+            "assets.read",
+            "assets.write",
+            "devices.read",
+            "devices.write",
+            "platforms.read",
+            "roms.read"
+        ])
+    );
+    assert_eq!(payload.as_object().expect("JSON object").len(), 6);
+    assert!(payload.get("device_id").is_none());
+    assert!(payload.get("device_name").is_none());
+    assert!(payload.get("client_name").is_none());
+    assert!(payload.get("scopes").is_none());
+    assert!(!body.contains("must-be-replaced"));
 }
 
 #[test]
