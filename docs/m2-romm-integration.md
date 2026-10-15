@@ -109,11 +109,29 @@ The DS command operates on an isolated copy and never writes the supplied live `
 
 The exercise intentionally retains two additional RomM versions: the temporary local revision and the restored original revision. RomM's configured ten-version autocleanup is left enabled, so the harness refuses to start when more than seven versions already exist. The workspace and downloaded original remain on disk as recovery evidence. If execution stops after the first upload but before restoration, do not rerun with a new workspace: preserve the existing workspace and restore `downloaded-remote.sav` through RomM before proceeding.
 
-Pair from the checked-out repository on Bazzite:
+Successful trusted pushes to `main` and manual CI runs publish a directly downloadable `romm-m2-qualify-linux-x86_64.tar.gz` artifact for 14 days. Pull requests do not publish executables. CI builds it with the pinned Rust 1.99 toolchain, smoke-tests `--help`, and packages the source commit plus a SHA-256 manifest with the executable. This avoids installing Rust or native build dependencies on Bazzite.
+
+Download the artifact from the successful GitHub Actions run onto Bazzite, then extract it into a new private directory and verify the executable before use:
 
 ```bash
-cargo run -p romm-sync-cli --bin romm-m2-qualify -- \
-  pair 'http://ROMM-LAN-HOST:PORT' \
+QUAL_DIR="$HOME/Applications/romm-m2-qualify-$(date +%Y%m%d-%H%M%S)"
+mkdir -m 700 "$QUAL_DIR"
+tar -xzf "$HOME/Downloads/romm-m2-qualify-linux-x86_64.tar.gz" -C "$QUAL_DIR"
+(
+  cd "$QUAL_DIR"
+  sha256sum -c SHA256SUMS
+  cat BUILD-INFO.txt
+  ./romm-m2-qualify --help
+)
+QUAL_BIN="$QUAL_DIR/romm-m2-qualify"
+```
+
+`sha256sum` must report `OK`, `BUILD-INFO.txt` must name the intended repository commit, and `--help` must succeed. Preserve `QUAL_BIN` in the same shell for the following commands.
+
+Pair on Bazzite without exposing a bearer token:
+
+```bash
+"$QUAL_BIN" pair 'http://ROMM-LAN-HOST:PORT' \
   "$HOME/.config/romm-autosync/credentials.json" \
   --allow-insecure-http
 ```
@@ -123,8 +141,7 @@ The command prints RomM's verification path and one-time user code, waits for ap
 After closing RetroArch and obtaining the already-audited numeric RomM ROM ID, run:
 
 ```bash
-cargo run -p romm-sync-cli --bin romm-m2-qualify -- \
-  nds "$HOME/.config/romm-autosync/credentials.json" ROM_ID \
+"$QUAL_BIN" nds "$HOME/.config/romm-autosync/credentials.json" ROM_ID \
   "$HOME/Emulation/saves/retroarch/saves/SUPER_MARIO_64_DS.srm" \
   "$HOME/romm-m2-sm64ds-qualification" \
   --allow-insecure-http \

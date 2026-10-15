@@ -3,6 +3,7 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -14,7 +15,7 @@ concurrency:
 jobs:
   format:
     name: Rust format
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@1.99.0
@@ -24,7 +25,7 @@ jobs:
 
   workspace:
     name: Bazzite-target Linux workspace
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@1.99.0
@@ -32,4 +33,40 @@ jobs:
           components: clippy
       - run: cargo test --workspace --all-targets
       - run: cargo clippy --workspace --all-targets -- -D warnings
+
+  qualification-artifact:
+    name: Bazzite qualification artifact
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    needs:
+      - format
+      - workspace
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.99.0
+      - name: Build qualification executable
+        run: cargo build --locked --release -p romm-sync-cli --bin romm-m2-qualify
+      - name: Smoke test qualification executable
+        run: target/release/romm-m2-qualify --help
+      - name: Package executable and verification metadata
+        env:
+          QUALIFICATION_COMMIT: ${{ github.sha }}
+        run: |
+          install -d -m 0755 dist/package
+          install -m 0755 target/release/romm-m2-qualify dist/package/romm-m2-qualify
+          printf 'commit=%s\ntarget=x86_64-unknown-linux-gnu\nrust=1.99.0\n' \
+            "$QUALIFICATION_COMMIT" > dist/package/BUILD-INFO.txt
+          cd dist/package
+          sha256sum romm-m2-qualify > SHA256SUMS
+          tar -czf ../romm-m2-qualify-linux-x86_64.tar.gz \
+            BUILD-INFO.txt SHA256SUMS romm-m2-qualify
+      - name: Publish qualification executable
+        uses: actions/upload-artifact@v7
+        with:
+          path: dist/romm-m2-qualify-linux-x86_64.tar.gz
+          archive: false
+          if-no-files-found: error
+          retention-days: 14
 
