@@ -245,12 +245,12 @@ fn qualify_nds(
     client.complete_session(initial.session_id, 1, 0)?;
 
     let upload_negotiation = client.negotiate(
-        vec![observation(
+        vec![observation_at(
             rom_id,
             &latest.file_name,
-            &source_copy,
             &source_bytes,
             emulator.clone(),
+            after_server_update(&remote_download.save)?,
         )?],
         Some(vec![rom_id]),
         emulator.clone().map(|value| vec![value]),
