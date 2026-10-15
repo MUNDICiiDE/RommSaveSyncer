@@ -299,11 +299,7 @@ fn qualify_nds(
         Some(vec![rom_id]),
         emulator.map(|value| vec![value]),
     )?;
-    require_operation(
-        &restore_negotiation.operations,
-        rom_id,
-        OperationAction::Upload,
-    )?;
+    require_restore_operation(&restore_negotiation.operations, rom_id, &source_md5)?;
     client.upload_autosave(
         rom_id,
         restore_negotiation.session_id,
@@ -418,7 +414,7 @@ fn recover_nds(
         Some(vec![rom_id]),
         emulator.map(|value| vec![value]),
     )?;
-    require_operation(&negotiation.operations, rom_id, OperationAction::Upload)?;
+    require_restore_operation(&negotiation.operations, rom_id, &source_md5)?;
     client.upload_autosave(
         rom_id,
         negotiation.session_id,
@@ -585,6 +581,37 @@ fn require_operation(
     }
 }
 
+fn require_restore_operation(
+    operations: &[romm_sync_romm::SyncOperation],
+    rom_id: i64,
+    expected_server_hash: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let operation = operations
+        .iter()
+        .find(|operation| {
+            operation.rom_id == rom_id && operation.slot.as_deref() == Some("autosave")
+        })
+        .ok_or("RomM did not return an autosave operation for guarded restore")?;
+
+    if operation.server_content_hash.as_deref() != Some(expected_server_hash) {
+        return Err(format!(
+            "RomM restore negotiation did not revalidate the expected remote head; observed={:?}",
+            operation.action
+        )
+        .into());
+    }
+
+    match operation.action {
+        OperationAction::Upload => Ok(()),
+        OperationAction::NoOp if operation.reason == "No changes since last sync" => Ok(()),
+        _ => Err(format!(
+            "RomM did not permit guarded restore; observed={:?}; reason={}",
+            operation.action, operation.reason
+        )
+        .into()),
+    }
+}
+
 fn validate_source(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let metadata = fs::symlink_metadata(path)?;
     if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
@@ -727,11 +754,14 @@ fn print_help() {
 mod tests {
     use std::fs;
 
-    use romm_sync_romm::SaveRecord;
+    use romm_sync_romm::{OperationAction, SaveRecord, SyncOperation};
     use tempfile::TempDir;
     use time::{Duration as TimeDuration, OffsetDateTime, format_description::well_known::Rfc3339};
 
-    use super::{after_server_update, create_empty_workspace, validate_recovery_workspace};
+    use super::{
+        after_server_update, create_empty_workspace, require_restore_operation,
+        validate_recovery_workspace,
+    };
 
     #[test]
     fn qualification_workspace_may_be_a_sibling_of_the_live_tree() {
@@ -790,5 +820,52 @@ mod tests {
         let original = OffsetDateTime::parse(timestamp, &Rfc3339).expect("timestamp");
         let later = after_server_update(&save).expect("later timestamp");
         assert_eq!(later - original, TimeDuration::seconds(1));
+    }
+
+    #[test]
+    fn guarded_restore_accepts_baseline_no_op_for_the_revalidated_head() {
+        let operation = SyncOperation {
+            action: OperationAction::NoOp,
+            rom_id: 2,
+            save_id: Some(1),
+            file_name: "game.sav".to_owned(),
+            slot: Some("autosave".to_owned()),
+            emulator: Some("melondsds".to_owned()),
+            reason: "No changes since last sync".to_owned(),
+            server_updated_at: Some("2026-10-14T22:51:35Z".to_owned()),
+            server_content_hash: Some("test-head".to_owned()),
+        };
+
+        require_restore_operation(&[operation], 2, "test-head")
+            .expect("a hash-verified baseline no-op is safe to pass to the conditional upload");
+    }
+
+    #[test]
+    fn guarded_restore_rejects_untracked_or_changed_remote_state() {
+        let untracked = SyncOperation {
+            action: OperationAction::NoOp,
+            rom_id: 2,
+            save_id: Some(1),
+            file_name: "game.sav".to_owned(),
+            slot: Some("autosave".to_owned()),
+            emulator: Some("melondsds".to_owned()),
+            reason: "Save is untracked on this device".to_owned(),
+            server_updated_at: None,
+            server_content_hash: None,
+        };
+        assert!(require_restore_operation(&[untracked], 2, "test-head").is_err());
+
+        let changed = SyncOperation {
+            action: OperationAction::Upload,
+            rom_id: 2,
+            save_id: Some(3),
+            file_name: "game.sav".to_owned(),
+            slot: Some("autosave".to_owned()),
+            emulator: Some("melondsds".to_owned()),
+            reason: "Client save is newer than last sync".to_owned(),
+            server_updated_at: Some("2026-10-14T22:52:00Z".to_owned()),
+            server_content_hash: Some("different-head".to_owned()),
+        };
+        assert!(require_restore_operation(&[changed], 2, "test-head").is_err());
     }
 }
