@@ -107,7 +107,7 @@ The DS command operates on an isolated copy and never writes the supplied live `
 7. uploads the downloaded original bytes to restore the remote head; and
 8. verifies that the live `.srm` remained byte-identical throughout.
 
-The exercise intentionally retains two additional RomM versions: the temporary local revision and the restored original revision. RomM's configured ten-version autocleanup is left enabled, so the harness refuses to start when more than seven versions already exist. The workspace and downloaded original remain on disk as recovery evidence. If execution stops after the first upload but before restoration, do not rerun with a new workspace: preserve the existing workspace and restore `downloaded-remote.sav` through RomM before proceeding.
+The exercise may add one unique RomM version for the temporary local revision. Restoration uploads the retained original hash, allowing RomM 5.4 to promote that retained version back to the slot head without creating a duplicate. RomM's configured ten-version autocleanup is left enabled, so the harness refuses to start when more than seven versions already exist. The workspace and downloaded original remain on disk as recovery evidence. If execution stops after the first upload but before restoration, do not rerun with a new workspace: preserve the existing workspace and use the harness's guarded `recover-nds` command before proceeding.
 
 Successful trusted pushes to `main` and manual CI runs publish a directly downloadable `romm-m2-qualify-linux-x86_64.tar.gz` artifact for 14 days. Pull requests do not publish executables. CI builds it with the pinned Rust 1.99 toolchain, smoke-tests `--help`, and packages the source commit plus a SHA-256 manifest with the executable. This avoids installing Rust or native build dependencies on Bazzite.
 
@@ -132,7 +132,7 @@ Pair on Bazzite without exposing a bearer token:
 
 ```bash
 "$QUAL_BIN" pair 'http://ROMM-LAN-HOST:PORT' \
-  "$HOME/.config/romm-autosync/credentials.json" \
+  "$HOME/.config/romm-save-sync/credentials.json" \
   --allow-insecure-http
 ```
 
@@ -141,7 +141,7 @@ The command prints RomM's verification path and one-time user code, waits for ap
 After closing RetroArch and obtaining the already-audited numeric RomM ROM ID, run:
 
 ```bash
-"$QUAL_BIN" nds "$HOME/.config/romm-autosync/credentials.json" ROM_ID \
+"$QUAL_BIN" nds "$HOME/.config/romm-save-sync/credentials.json" ROM_ID \
   "$HOME/Emulation/saves/retroarch/saves/SUPER_MARIO_64_DS.srm" \
   "$HOME/romm-m2-sm64ds-qualification" \
   --allow-insecure-http \
@@ -150,9 +150,20 @@ After closing RetroArch and obtaining the already-audited numeric RomM ROM ID, r
 
 Replace the placeholder filename with the actual single `.srm` path; quote it when it contains spaces. The output is a sanitized JSON report containing check names and counts, never the server address, device ID, ROM ID/title, filename, hashes, token, authorization code or save bytes. A failed run does not satisfy the milestone gate.
 
+## Deployed qualification evidence
+
+On 2026-10-15, the Bazzite/Linux artifact built from commit `90b59b0` completed the guarded Nintendo DS qualification against the deployed RomM 5.4.0 server. The sanitized report recorded:
+
+- schema version 1 and platform `nds`;
+- all eight checks passed: source immutability, baseline-free conflict classification, staged download verification, post-commit confirmation, upload verification, repeated-upload deduplication, remote-head restoration and trace sanitization;
+- three retained versions before the run; and
+- exactly two guarded upload POSTs, one for the disposable local revision and one restoring the retained original.
+
+The live `.srm` remained byte-identical and the original retained `.sav` was the final RomM slot head. An earlier interrupted attempt was also recovered through `recover-nds`; recovery revalidated the current remote head, promoted the retained original without adding a duplicate version, and left the live source unchanged. No server address, device identifier, ROM identifier, filename, token, authorization code, hash or save bytes are retained in this evidence.
+
 ## Remaining disposable RomM gate
 
-The M2 exit gate is not yet claimed. The guarded DS harness covers the real-server bidirectional byte transfer, first-sync conflict, completion, retry deduplication and restoration portions. Before M2 is marked complete, capture the harness report and complete the remaining disposable RomM 5.4.x checks for:
+The M2 exit gate is not yet claimed. The guarded DS harness has passed the real-server bidirectional byte transfer, first-sync conflict, completion, retry deduplication and restoration portions. Before M2 is marked complete, complete the remaining disposable RomM 5.4.x checks for:
 
 1. device revocation and rejection of the revoked credential;
 2. retry after an intentionally lost live response, proving no duplicate version;

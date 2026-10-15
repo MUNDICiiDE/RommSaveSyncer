@@ -104,7 +104,7 @@ Build the **framework for multiple platforms from day one**. Enable automatic sy
 
 ## M2 — RomM protocol and sync integration
 
-**Status:** Implementation and disposable protocol tests are in place; the real RomM 5.4 disposable-environment exit test remains pending.
+**Status:** Deployed RomM 5.4 bidirectional autosave qualification passed on 2026-10-15; the remaining deployed failure-mode checks are pending.
 
 **Objective:** Reliable two-way communication while preserving RomM's device/save-slot semantics.
 
@@ -117,11 +117,13 @@ Build the **framework for multiple platforms from day one**. Enable automatic sy
 - [x] Implement upload/download with temporary staging, explicit success confirmation and idempotent retries.
 - [x] Implement conflict detection based on last common version, not timestamps alone.
 - [x] Support offline queue, reconnect behavior, exponential backoff and request timeouts.
-- [ ] Test deployed RomM `autosave` interoperability in both directions using safe disposable test saves.
+- [x] Test deployed RomM `autosave` interoperability in both directions using safe disposable test saves.
 
 **Deliverables:** RomM API adapter, integration tests, sanitized trace logs, error/error-recovery guide.
 
 **Exit gate:** Both directions work in a disposable test environment, repeated requests do not duplicate saves, and conflicts never overwrite either side.
+
+**Partial exit-gate evidence:** The Bazzite/Linux artifact built from commit `90b59b0` completed the guarded Nintendo DS qualification against the deployed RomM 5.4.0 server on 2026-10-15. Its sanitized report passed source immutability, baseline-free conflict classification, staged download verification, post-commit download confirmation, upload verification, repeated-upload deduplication, remote-head restoration and trace sanitization. It began with three retained versions and issued exactly two guarded upload POSTs: the disposable promotion and restoration of the retained original. An interrupted earlier attempt was recovered with the original remote head restored and the live `.srm` unchanged. M2 remains open for the revocation, lost-response, competing-device conflict and temporary-outage/reconnect checks listed in the integration guide.
 
 ## M3 — Multi-system emulator adapters
 
