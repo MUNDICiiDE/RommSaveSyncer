@@ -277,6 +277,7 @@ impl RomMClient {
         session_id: i64,
         slot: &str,
         file_name: &str,
+        emulator: Option<&str>,
         bytes: Vec<u8>,
     ) -> Result<UploadOutcome, RomMError> {
         self.ensure_compatible()?;
@@ -299,20 +300,20 @@ impl RomMClient {
                     source,
                 })?,
         );
-        let request = self
-            .http
-            .post(url)
-            .query(&[
-                ("rom_id", rom_id.to_string()),
-                ("slot", slot.to_owned()),
-                ("device_id", credential.device_id.clone()),
-                ("session_id", session_id.to_string()),
-                ("content_hash", digest.clone()),
-                ("overwrite", "false".to_owned()),
-                ("autocleanup", "true".to_owned()),
-                ("autocleanup_limit", "10".to_owned()),
-            ])
-            .multipart(form);
+        let mut query = vec![
+            ("rom_id", rom_id.to_string()),
+            ("slot", slot.to_owned()),
+            ("device_id", credential.device_id.clone()),
+            ("session_id", session_id.to_string()),
+            ("content_hash", digest.clone()),
+            ("overwrite", "false".to_owned()),
+            ("autocleanup", "true".to_owned()),
+            ("autocleanup_limit", "10".to_owned()),
+        ];
+        if let Some(emulator) = emulator {
+            query.push(("emulator", emulator.to_owned()));
+        }
+        let request = self.http.post(url).query(&query).multipart(form);
         let response = match request.send() {
             Ok(response) => response,
             Err(source) => {

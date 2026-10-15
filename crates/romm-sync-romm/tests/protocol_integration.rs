@@ -245,7 +245,14 @@ fn lost_upload_response_reconciles_by_hash_without_duplicate_post() {
         },
     ]);
     let result = client(&server.origin)
-        .upload_autosave(1234, 42, "autosave", "mario.sav", bytes.to_vec())
+        .upload_autosave(
+            1234,
+            42,
+            "autosave",
+            "mario.sav",
+            Some("melondsds"),
+            bytes.to_vec(),
+        )
         .expect("lost response should reconcile");
     assert!(matches!(result, UploadOutcome::AlreadyPresent(save) if save.id == 77));
     let requests = server.finish();
@@ -257,6 +264,7 @@ fn lost_upload_response_reconciles_by_hash_without_duplicate_post() {
         1
     );
     assert!(requests[2].contains("overwrite=false"));
+    assert!(requests[2].contains("emulator=melondsds"));
     assert!(!requests.iter().any(|request| request.starts_with("PUT ")));
 }
 
@@ -285,7 +293,14 @@ fn guarded_conflict_never_falls_back_to_overwrite() {
         },
     ]);
     let error = client(&server.origin)
-        .upload_autosave(1234, 42, "autosave", "mario.sav", b"local".to_vec())
+        .upload_autosave(
+            1234,
+            42,
+            "autosave",
+            "mario.sav",
+            Some("melondsds"),
+            b"local".to_vec(),
+        )
         .expect_err("different remote head must remain a conflict");
     assert!(matches!(error, RomMError::Conflict));
     let requests = server.finish();
@@ -310,7 +325,7 @@ fn completed_upload_retry_is_a_read_only_no_op() {
         },
     ]);
     let outcome = client(&server.origin)
-        .upload_autosave(1234, 42, "autosave", "mario.sav", bytes.to_vec())
+        .upload_autosave(1234, 42, "autosave", "mario.sav", None, bytes.to_vec())
         .expect("identical head is already complete");
     assert!(matches!(outcome, UploadOutcome::AlreadyPresent(save) if save.id == 91));
     let requests = server.finish();

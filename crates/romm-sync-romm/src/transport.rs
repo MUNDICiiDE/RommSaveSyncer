@@ -11,6 +11,8 @@ use crate::{RomMClient, UploadOutcome, VerifiedDownload};
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RemoteMapping {
     pub rom_id: i64,
+    /// Emulator folder identity preserved on `RomM` uploads.
+    pub emulator: Option<String>,
     /// Stable logical member name used by M1B's local-to-remote mapping.
     pub remote_member: String,
     /// Filename `RomM` should store, including adapter-selected extension.
@@ -153,6 +155,7 @@ impl RemoteTransport for RomMTransport {
                 self.session_id,
                 &key.slot.0,
                 &mapping.upload_file_name,
+                mapping.emulator.as_deref(),
                 member.bytes.clone(),
             )
             .map_err(remote_error)?;

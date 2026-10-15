@@ -265,6 +265,7 @@ fn qualify_nds(
         upload_negotiation.session_id,
         "autosave",
         &latest.file_name,
+        emulator.as_deref(),
         source_bytes.clone(),
     )?;
     if !matches!(first_upload, UploadOutcome::Stored(_)) {
@@ -275,6 +276,7 @@ fn qualify_nds(
         upload_negotiation.session_id,
         "autosave",
         &latest.file_name,
+        emulator.as_deref(),
         source_bytes,
     )?;
     if !matches!(repeated, UploadOutcome::AlreadyPresent(_)) {
@@ -297,7 +299,7 @@ fn qualify_nds(
             after_server_update(&uploaded_head)?,
         )?],
         Some(vec![rom_id]),
-        emulator.map(|value| vec![value]),
+        None,
     )?;
     require_restore_operation(&restore_negotiation.operations, rom_id, &source_md5)?;
     client.upload_autosave(
@@ -305,6 +307,7 @@ fn qualify_nds(
         restore_negotiation.session_id,
         "autosave",
         &latest.file_name,
+        emulator.as_deref(),
         downloaded_bytes,
     )?;
     client.complete_session(restore_negotiation.session_id, 1, 0)?;
@@ -389,20 +392,15 @@ fn recover_nds(
                 .into(),
         );
     }
-    if !versions
+    let original = versions
         .iter()
-        .any(|save| save.content_hash.as_deref() == Some(original_md5.as_str()))
-    {
-        return Err("verified original remote version is no longer retained".into());
-    }
+        .find(|save| save.content_hash.as_deref() == Some(original_md5.as_str()))
+        .ok_or("verified original remote version is no longer retained")?;
     if extension(&latest.file_name) != "sav" {
         return Err("the selected remote head is not a DS .sav".into());
     }
 
-    let emulator = latest
-        .emulator
-        .clone()
-        .or_else(|| Some("melondsds".to_owned()));
+    let emulator = original.emulator.clone();
     let negotiation = client.negotiate(
         vec![observation_at(
             rom_id,
@@ -412,7 +410,7 @@ fn recover_nds(
             after_server_update(&latest)?,
         )?],
         Some(vec![rom_id]),
-        emulator.map(|value| vec![value]),
+        None,
     )?;
     require_restore_operation(&negotiation.operations, rom_id, &source_md5)?;
     client.upload_autosave(
@@ -420,6 +418,7 @@ fn recover_nds(
         negotiation.session_id,
         "autosave",
         &latest.file_name,
+        emulator.as_deref(),
         downloaded_bytes,
     )?;
     client.complete_session(negotiation.session_id, 1, 0)?;
