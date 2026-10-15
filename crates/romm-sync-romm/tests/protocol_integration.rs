@@ -150,6 +150,14 @@ fn json(status: u16, body: &str) -> Option<ResponseSpec> {
     })
 }
 
+fn empty(status: u16) -> ResponseSpec {
+    ResponseSpec {
+        status,
+        content_type: "application/json",
+        body: Vec::new(),
+    }
+}
+
 fn heartbeat(version: &str) -> Step {
     Step {
         method: "GET",
@@ -266,6 +274,89 @@ fn lost_upload_response_reconciles_by_hash_without_duplicate_post() {
     assert!(requests[2].contains("overwrite=false"));
     assert!(requests[2].contains("emulator=melondsds"));
     assert!(!requests.iter().any(|request| request.starts_with("PUT ")));
+}
+
+#[test]
+fn qualification_response_loss_reconciles_the_live_success_without_duplicate_post() {
+    let bytes = b"disposable-save";
+    let digest = md5_hex(bytes);
+    let save = format!(
+        r#"{{"id":77,"rom_id":1234,"file_name":"mario.sav","slot":"autosave","emulator":"melondsds","content_hash":"{digest}","file_size_bytes":{},"updated_at":"2026-10-14T10:00:00Z","device_id":"beelink-test-device"}}"#,
+        bytes.len()
+    );
+    let saves = format!("[{save}]");
+    let server = ScriptServer::start(vec![
+        heartbeat("5.4.0"),
+        Step {
+            method: "GET",
+            path_contains: "/api/saves?rom_id=1234",
+            body_contains: None,
+            response: json(200, "[]"),
+        },
+        Step {
+            method: "POST",
+            path_contains: "/api/saves?",
+            body_contains: Some("disposable-save"),
+            response: json(200, &save),
+        },
+        Step {
+            method: "GET",
+            path_contains: "/api/saves?rom_id=1234",
+            body_contains: None,
+            response: json(200, &saves),
+        },
+    ]);
+
+    let outcome = client(&server.origin)
+        .upload_autosave_with_response_loss(
+            1234,
+            42,
+            "autosave",
+            "mario.sav",
+            Some("melondsds"),
+            bytes.to_vec(),
+        )
+        .expect("discarded success should reconcile by visible head hash");
+
+    assert!(matches!(outcome, UploadOutcome::AlreadyPresent(save) if save.id == 77));
+    let requests = server.finish();
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|request| request.starts_with("POST /api/saves?"))
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn deleting_the_bound_device_revokes_its_credential() {
+    let server = ScriptServer::start(vec![
+        heartbeat("5.4.0"),
+        Step {
+            method: "DELETE",
+            path_contains: "/api/devices/beelink-test-device",
+            body_contains: None,
+            response: Some(empty(204)),
+        },
+        Step {
+            method: "GET",
+            path_contains: "/api/saves?rom_id=1234",
+            body_contains: None,
+            response: json(401, r#"{"detail":"Unauthorized"}"#),
+        },
+    ]);
+    let client = client(&server.origin);
+
+    client
+        .revoke_bound_device()
+        .expect("bound device deletion should succeed");
+    let error = client
+        .list_saves(1234)
+        .expect_err("the deleted device token must be rejected");
+
+    assert!(matches!(error, RomMError::Api { status: 401, .. }));
+    server.finish();
 }
 
 #[test]

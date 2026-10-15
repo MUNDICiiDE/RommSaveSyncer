@@ -24,6 +24,7 @@ const SAVES_ROUTE: &str = "/api/saves";
 const SAVE_CONTENT_ROUTE: &str = "/api/saves/{id}/content";
 const SAVE_DOWNLOADED_ROUTE: &str = "/api/saves/{id}/downloaded";
 const COMPLETE_ROUTE: &str = "/api/sync/sessions/{id}/complete";
+const DEVICE_ROUTE: &str = "/api/devices/{id}";
 
 #[derive(Clone, Debug)]
 pub struct ClientConfig {
@@ -78,6 +79,15 @@ impl fmt::Debug for RomMClient {
 pub enum TokenPoll {
     Pending,
     Authorized(DeviceCredential),
+}
+
+#[derive(Clone, Copy)]
+struct AutosaveUpload<'a> {
+    rom_id: i64,
+    session_id: i64,
+    slot: &'a str,
+    file_name: &'a str,
+    emulator: Option<&'a str>,
 }
 
 impl RomMClient {
@@ -280,6 +290,62 @@ impl RomMClient {
         emulator: Option<&str>,
         bytes: Vec<u8>,
     ) -> Result<UploadOutcome, RomMError> {
+        self.upload_autosave_inner(
+            AutosaveUpload {
+                rom_id,
+                session_id,
+                slot,
+                file_name,
+                emulator,
+            },
+            bytes,
+            false,
+        )
+    }
+
+    /// Qualification-only fault injection: process a real guarded upload, then
+    /// discard its successful response and reconcile by reading the slot head.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for version drift, conflict, transport, or integrity
+    /// failure.
+    #[doc(hidden)]
+    pub fn upload_autosave_with_response_loss(
+        &self,
+        rom_id: i64,
+        session_id: i64,
+        slot: &str,
+        file_name: &str,
+        emulator: Option<&str>,
+        bytes: Vec<u8>,
+    ) -> Result<UploadOutcome, RomMError> {
+        self.upload_autosave_inner(
+            AutosaveUpload {
+                rom_id,
+                session_id,
+                slot,
+                file_name,
+                emulator,
+            },
+            bytes,
+            true,
+        )
+    }
+
+    fn upload_autosave_inner(
+        &self,
+        upload: AutosaveUpload<'_>,
+        bytes: Vec<u8>,
+        inject_response_loss: bool,
+    ) -> Result<UploadOutcome, RomMError> {
+        let AutosaveUpload {
+            rom_id,
+            session_id,
+            slot,
+            file_name,
+            emulator,
+        } = upload;
         self.ensure_compatible()?;
         let credential = self.credential()?;
         validate_slot(slot)?;
@@ -341,9 +407,35 @@ impl RomMClient {
             }
             return Err(RomMError::Conflict);
         }
-        let stored: SaveRecord = decode_json(require_success(response, SAVES_ROUTE)?, SAVES_ROUTE)?;
+        let response = require_success(response, SAVES_ROUTE)?;
+        if inject_response_loss {
+            drop(response);
+            if let Some(existing) = self.latest_save(rom_id, slot)?
+                && existing.content_hash.as_deref() == Some(digest.as_str())
+            {
+                return Ok(UploadOutcome::AlreadyPresent(existing));
+            }
+            return Err(RomMError::Protocol(
+                "qualification response-loss injection could not reconcile the uploaded head"
+                    .to_owned(),
+            ));
+        }
+        let stored: SaveRecord = decode_json(response, SAVES_ROUTE)?;
         validate_stored_save(&stored, rom_id, slot, &digest)?;
         Ok(UploadOutcome::Stored(stored))
+    }
+
+    /// Deletes the device bound to this credential, revoking all of its tokens.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for version drift, authorization, or transport failure.
+    pub fn revoke_bound_device(&self) -> Result<(), RomMError> {
+        self.ensure_compatible()?;
+        let credential = self.credential()?;
+        let url = self.endpoint(&format!("/api/devices/{}", credential.device_id))?;
+        self.send("DELETE", DEVICE_ROUTE, self.http.delete(url))?;
+        Ok(())
     }
 
     /// Downloads without optimistic acknowledgement and verifies `RomM`'s `MD5`

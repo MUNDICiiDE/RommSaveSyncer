@@ -161,6 +161,47 @@ On 2026-10-15, the Bazzite/Linux artifact built from commit `90b59b0` completed 
 
 The live `.srm` remained byte-identical and the original retained `.sav` was the final RomM slot head. An earlier interrupted attempt was also recovered through `recover-nds`; recovery revalidated the current remote head, promoted the retained original without adding a duplicate version, and left the live source unchanged. No server address, device identifier, ROM identifier, filename, token, authorization code, hash or save bytes are retained in this evidence.
 
+## Guarded failure-mode qualification
+
+The remaining live checks use a second, explicitly disposable RomM device. Never reuse the primary Beelink credential as the competitor. On Bazzite, use the canonical `/var/home` path because `/home` is a symlink and guarded credential storage rejects symlink components. Pair the disposable device into a separate owner-only credential file:
+
+```bash
+REAL_HOME="/var/home/$USER"
+"$QUAL_BIN" pair-disposable 'http://ROMM-LAN-HOST:PORT' \
+  "$REAL_HOME/.config/romm-save-sync/m2-disposable-competitor.json" \
+  --allow-insecure-http \
+  --confirm-create-disposable-device
+```
+
+After approval in RomM, close RetroArch and run `failure-sync` with a new workspace. The command requires the original and disposable revisions to remain in the selected autosave history, refuses more than eight retained versions, and never writes the supplied live `.srm`:
+
+```bash
+"$QUAL_BIN" failure-sync \
+  "$REAL_HOME/.config/romm-save-sync/credentials.json" \
+  "$REAL_HOME/.config/romm-save-sync/m2-disposable-competitor.json" \
+  ROM_ID \
+  "$REAL_HOME/Emulation/saves/retroarch/saves/SUPER_MARIO_64_DS.srm" \
+  "$REAL_HOME/romm-m2-failure-qualification" \
+  --allow-insecure-http \
+  --confirm-disposable-romm-mutation
+```
+
+The command establishes both device baselines, performs one real guarded upload while deliberately discarding its successful response, reconciles the visible head by hash, proves the retry issues no duplicate POST, verifies that the stale primary device receives HTTP 409, restores the retained original, and confirms both revisions remain present. It also exercises the durable SQLite retry queue through a local unreachable endpoint, closes and reopens the database to prove persistence, reconnects to the deployed RomM server, and clears the retry only after that compatibility check succeeds. The local outage probe never changes host networking and therefore cannot terminate SSH.
+
+Only after `failure-sync` succeeds, revoke the disposable competitor and prove its credential is rejected while the primary credential and restored remote head remain valid:
+
+```bash
+"$QUAL_BIN" revoke-disposable \
+  "$REAL_HOME/.config/romm-save-sync/credentials.json" \
+  "$REAL_HOME/.config/romm-save-sync/m2-disposable-competitor.json" \
+  ROM_ID \
+  "$REAL_HOME/romm-m2-failure-qualification" \
+  --allow-insecure-http \
+  --confirm-revoke-disposable-device
+```
+
+Revocation deletes only the device bound to the disposable credential. Keep the now-revoked credential file until its sanitized report is recorded, then remove it through the normal user-controlled cleanup process.
+
 ## Remaining disposable RomM gate
 
 The M2 exit gate is not yet claimed. The guarded DS harness has passed the real-server bidirectional byte transfer, first-sync conflict, completion, retry deduplication and restoration portions. Before M2 is marked complete, complete the remaining disposable RomM 5.4.x checks for:

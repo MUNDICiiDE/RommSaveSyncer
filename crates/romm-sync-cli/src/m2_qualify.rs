@@ -2,6 +2,7 @@ use std::{
     env,
     fs::{self, OpenOptions},
     io::{self, Write},
+    net::{TcpListener, TcpStream},
     path::Path,
     process::ExitCode,
     sync::Arc,
@@ -9,7 +10,7 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 
-use romm_sync_core::{observe_local_group, observe_root};
+use romm_sync_core::{StateStore, observe_local_group, observe_root};
 use romm_sync_planner::{
     ActivityStatus, AdapterSnapshot, AdapterStatus, BaselineState, CompatibilityStatus,
     Fingerprint, GameKey, HashAlgorithm, IdentityStatus, LocalSaveState, PlanAction, PlannerInput,
@@ -17,9 +18,9 @@ use romm_sync_planner::{
     SaveModel, SlotId, plan,
 };
 use romm_sync_romm::{
-    ClientConfig, CredentialStore, DeviceAuthorizationRequest, DeviceCredential,
-    LocalSaveObservation, MemoryTrace, OperationAction, RomMClient, SaveRecord, TokenPoll,
-    UploadOutcome, md5_hex,
+    BackoffPolicy, ClientConfig, CredentialStore, DeviceAuthorizationRequest, DeviceCredential,
+    LocalSaveObservation, MemoryTrace, OperationAction, RetryDisposition, RomMClient, RomMError,
+    SaveRecord, TokenPoll, UploadOutcome, md5_hex, schedule_retry_after_failure,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -28,6 +29,8 @@ use uuid::Uuid;
 
 const CONFIRMATION: &str = "--confirm-disposable-romm-mutation";
 const INSECURE_HTTP: &str = "--allow-insecure-http";
+const CONFIRM_DISPOSABLE_DEVICE: &str = "--confirm-create-disposable-device";
+const CONFIRM_REVOCATION: &str = "--confirm-revoke-disposable-device";
 
 fn main() -> ExitCode {
     match run() {
@@ -39,6 +42,7 @@ fn main() -> ExitCode {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let arguments: Vec<String> = env::args().skip(1).collect();
     match arguments.as_slice() {
@@ -47,6 +51,18 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
         [command, origin, credential, flag] if command == "pair" && flag == INSECURE_HTTP => {
             pair(origin, Path::new(credential), true)
+        }
+        [command, origin, credential, confirmation]
+            if command == "pair-disposable" && confirmation == CONFIRM_DISPOSABLE_DEVICE =>
+        {
+            pair_disposable(origin, Path::new(credential), false)
+        }
+        [command, origin, credential, insecure, confirmation]
+            if command == "pair-disposable"
+                && insecure == INSECURE_HTTP
+                && confirmation == CONFIRM_DISPOSABLE_DEVICE =>
+        {
+            pair_disposable(origin, Path::new(credential), true)
         }
         [command, credential, rom_id, source, workspace, confirmation]
             if command == "nds"
@@ -111,6 +127,85 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 true,
             )
         }
+        [
+            command,
+            primary,
+            competitor,
+            rom_id,
+            source,
+            workspace,
+            confirmation,
+        ] if command == "failure-sync"
+            && confirmation == CONFIRMATION
+            && !arguments.iter().any(|argument| argument == INSECURE_HTTP) =>
+        {
+            qualify_failure_modes(
+                Path::new(primary),
+                Path::new(competitor),
+                rom_id.parse()?,
+                Path::new(source),
+                Path::new(workspace),
+                false,
+            )
+        }
+        [
+            command,
+            primary,
+            competitor,
+            rom_id,
+            source,
+            workspace,
+            insecure,
+            confirmation,
+        ] if command == "failure-sync"
+            && insecure == INSECURE_HTTP
+            && confirmation == CONFIRMATION =>
+        {
+            qualify_failure_modes(
+                Path::new(primary),
+                Path::new(competitor),
+                rom_id.parse()?,
+                Path::new(source),
+                Path::new(workspace),
+                true,
+            )
+        }
+        [
+            command,
+            primary,
+            competitor,
+            rom_id,
+            workspace,
+            confirmation,
+        ] if command == "revoke-disposable" && confirmation == CONFIRM_REVOCATION => {
+            revoke_disposable_device(
+                Path::new(primary),
+                Path::new(competitor),
+                rom_id.parse()?,
+                Path::new(workspace),
+                false,
+            )
+        }
+        [
+            command,
+            primary,
+            competitor,
+            rom_id,
+            workspace,
+            insecure,
+            confirmation,
+        ] if command == "revoke-disposable"
+            && insecure == INSECURE_HTTP
+            && confirmation == CONFIRM_REVOCATION =>
+        {
+            revoke_disposable_device(
+                Path::new(primary),
+                Path::new(competitor),
+                rom_id.parse()?,
+                Path::new(workspace),
+                true,
+            )
+        }
         [command] if matches!(command.as_str(), "help" | "-h" | "--help") => {
             print_help();
             Ok(())
@@ -127,11 +222,49 @@ fn pair(
     credential_path: &Path,
     allow_insecure_http: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    pair_with_identity(
+        origin,
+        credential_path,
+        allow_insecure_http,
+        stable_device_id()?,
+        "Beelink RomM Save Syncer",
+    )
+}
+
+fn pair_disposable(
+    origin: &str,
+    credential_path: &Path,
+    allow_insecure_http: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let nonce = format!(
+        "{}:{}",
+        OffsetDateTime::now_utc().unix_timestamp_nanos(),
+        std::process::id()
+    );
+    pair_with_identity(
+        origin,
+        credential_path,
+        allow_insecure_http,
+        format!(
+            "romm-m2-disposable-{}",
+            Uuid::new_v5(&Uuid::NAMESPACE_OID, nonce.as_bytes())
+        ),
+        "RomM Save Sync M2 Disposable Competitor",
+    )
+}
+
+fn pair_with_identity(
+    origin: &str,
+    credential_path: &Path,
+    allow_insecure_http: bool,
+    client_device_identifier: String,
+    name: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     let config = ClientConfig::new(origin)?.with_insecure_http(allow_insecure_http);
     let client = RomMClient::for_pairing(config)?;
     let authorization = client.begin_device_authorization(DeviceAuthorizationRequest {
-        client_device_identifier: stable_device_id()?,
-        name: "Beelink RomM Save Syncer".to_owned(),
+        client_device_identifier,
+        name: name.to_owned(),
         client: "romm-autosync".to_owned(),
         client_version: env!("CARGO_PKG_VERSION").to_owned(),
         platform: "bazzite".to_owned(),
@@ -438,6 +571,400 @@ fn recover_nds(
     Ok(())
 }
 
+#[allow(clippy::too_many_lines)]
+fn qualify_failure_modes(
+    primary_credential_path: &Path,
+    competitor_credential_path: &Path,
+    rom_id: i64,
+    source: &Path,
+    workspace: &Path,
+    allow_insecure_http: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    validate_source(source)?;
+    create_empty_workspace(workspace, source)?;
+    let source_copy = workspace.join("competitor-source.srm");
+    copy_new_synced(source, &source_copy)?;
+    let source_bytes = fs::read(&source_copy)?;
+    let source_md5 = md5_hex(&source_bytes);
+
+    let primary_credential = CredentialStore::new(primary_credential_path.to_path_buf()).load()?;
+    let competitor_credential =
+        CredentialStore::new(competitor_credential_path.to_path_buf()).load()?;
+    if primary_credential.device_id == competitor_credential.device_id {
+        return Err("failure qualification requires two distinct RomM devices".into());
+    }
+    if primary_credential.server_origin != competitor_credential.server_origin {
+        return Err("failure qualification credentials target different RomM origins".into());
+    }
+
+    let primary_trace = Arc::new(MemoryTrace::default());
+    let competitor_trace = Arc::new(MemoryTrace::default());
+    let primary = authenticated_client(&primary_credential, allow_insecure_http)?
+        .with_trace_sink(primary_trace.clone());
+    let competitor = authenticated_client(&competitor_credential, allow_insecure_http)?
+        .with_trace_sink(competitor_trace.clone());
+    let version = primary.ensure_compatible()?;
+    if competitor.ensure_compatible()? != version {
+        return Err("the two disposable clients observed different RomM versions".into());
+    }
+
+    let versions: Vec<_> = primary
+        .list_saves(rom_id)?
+        .into_iter()
+        .filter(|save| save.slot.as_deref() == Some("autosave"))
+        .collect();
+    if versions.is_empty() || versions.len() > 8 {
+        return Err("failure qualification requires one to eight retained autosaves".into());
+    }
+    let original = latest_version(&versions)?.clone();
+    if extension(&original.file_name) != "sav" {
+        return Err("failure qualification requires a DS .sav remote head".into());
+    }
+    let original_md5 = original
+        .content_hash
+        .clone()
+        .ok_or("the original remote head has no content hash")?;
+    if original_md5 == source_md5 {
+        return Err("failure qualification requires divergent disposable revisions".into());
+    }
+    if !versions
+        .iter()
+        .any(|save| save.content_hash.as_deref() == Some(source_md5.as_str()))
+    {
+        return Err(
+            "the disposable competitor revision is not retained; refusing to add a version".into(),
+        );
+    }
+    let emulator = original.emulator.clone();
+
+    let primary_session = primary.negotiate(
+        vec![observation(
+            rom_id,
+            &original.file_name,
+            &source_copy,
+            &source_bytes,
+            emulator.clone(),
+        )?],
+        Some(vec![rom_id]),
+        None,
+    )?;
+    let primary_download =
+        primary.download_unconfirmed(original.clone(), primary_session.session_id)?;
+    let original_path = workspace.join("original-remote.sav");
+    write_new_synced(&original_path, &primary_download.bytes)?;
+    let original_bytes = fs::read(&original_path)?;
+    if md5_hex(&original_bytes) != original_md5 {
+        return Err("failure qualification original failed read-back verification".into());
+    }
+    primary.confirm_download(primary_download.save.id, &primary_download.md5)?;
+    primary.complete_session(primary_session.session_id, 1, 0)?;
+
+    let competitor_session = competitor.negotiate(
+        vec![observation_at(
+            rom_id,
+            &original.file_name,
+            &original_bytes,
+            emulator.clone(),
+            after_server_update(&original)?,
+        )?],
+        Some(vec![rom_id]),
+        None,
+    )?;
+    let competitor_download =
+        competitor.download_unconfirmed(original.clone(), competitor_session.session_id)?;
+    if competitor_download.bytes != original_bytes {
+        return Err("the two devices downloaded different original bytes".into());
+    }
+    competitor.confirm_download(competitor_download.save.id, &competitor_download.md5)?;
+    competitor.complete_session(competitor_session.session_id, 1, 0)?;
+
+    let response_loss_session = competitor.negotiate(
+        vec![observation_at(
+            rom_id,
+            &original.file_name,
+            &source_bytes,
+            emulator.clone(),
+            after_server_update(&original)?,
+        )?],
+        Some(vec![rom_id]),
+        None,
+    )?;
+    require_operation(
+        &response_loss_session.operations,
+        rom_id,
+        OperationAction::Upload,
+    )?;
+    let lost = competitor.upload_autosave_with_response_loss(
+        rom_id,
+        response_loss_session.session_id,
+        "autosave",
+        &original.file_name,
+        emulator.as_deref(),
+        source_bytes.clone(),
+    )?;
+    if !matches!(lost, UploadOutcome::AlreadyPresent(_)) {
+        return Err("response-loss injection did not reconcile by visible head hash".into());
+    }
+    let retry = competitor.upload_autosave(
+        rom_id,
+        response_loss_session.session_id,
+        "autosave",
+        &original.file_name,
+        emulator.as_deref(),
+        source_bytes.clone(),
+    )?;
+    if !matches!(retry, UploadOutcome::AlreadyPresent(_)) {
+        return Err("response-loss retry was not a read-only success".into());
+    }
+    competitor.complete_session(response_loss_session.session_id, 1, 0)?;
+    let promoted = competitor
+        .latest_save(rom_id, "autosave")?
+        .ok_or("competitor promotion has no visible remote head")?;
+    if promoted.content_hash.as_deref() != Some(source_md5.as_str()) {
+        return Err("competitor promotion failed hash verification".into());
+    }
+    let response_loss_posts = competitor_trace
+        .events()
+        .iter()
+        .filter(|event| event.method == "POST" && event.route == "/api/saves")
+        .count();
+    if response_loss_posts != 1 {
+        return Err("response-loss retry issued an unexpected duplicate POST".into());
+    }
+
+    let stale_session = primary.negotiate(
+        vec![observation_at(
+            rom_id,
+            &original.file_name,
+            &original_bytes,
+            emulator.clone(),
+            after_server_update(&promoted)?,
+        )?],
+        Some(vec![rom_id]),
+        None,
+    )?;
+    require_operation(&stale_session.operations, rom_id, OperationAction::Download)?;
+    let conflict = primary.upload_autosave(
+        rom_id,
+        stale_session.session_id,
+        "autosave",
+        &original.file_name,
+        emulator.as_deref(),
+        original_bytes.clone(),
+    );
+    if !matches!(conflict, Err(RomMError::Conflict)) {
+        return Err("stale competing-device upload did not return a guarded conflict".into());
+    }
+    primary.complete_session(stale_session.session_id, 0, 1)?;
+    let after_conflict = primary
+        .latest_save(rom_id, "autosave")?
+        .ok_or("remote head disappeared after guarded conflict")?;
+    if after_conflict.content_hash.as_deref() != Some(source_md5.as_str()) {
+        return Err("guarded conflict changed the competitor's remote head".into());
+    }
+    let conflict_status_present = primary_trace.events().iter().any(|event| {
+        event.method == "POST" && event.route == "/api/saves" && event.status == Some(409)
+    });
+    if !conflict_status_present {
+        return Err("sanitized trace did not record the expected 409 conflict".into());
+    }
+
+    let restore_session = competitor.negotiate(
+        vec![observation_at(
+            rom_id,
+            &original.file_name,
+            &original_bytes,
+            emulator.clone(),
+            after_server_update(&after_conflict)?,
+        )?],
+        Some(vec![rom_id]),
+        None,
+    )?;
+    require_restore_operation(&restore_session.operations, rom_id, &source_md5)?;
+    competitor.upload_autosave(
+        rom_id,
+        restore_session.session_id,
+        "autosave",
+        &original.file_name,
+        emulator.as_deref(),
+        original_bytes,
+    )?;
+    competitor.complete_session(restore_session.session_id, 1, 0)?;
+    let restored = primary
+        .latest_save(rom_id, "autosave")?
+        .ok_or("restored remote head is missing")?;
+    if restored.content_hash.as_deref() != Some(original_md5.as_str()) {
+        return Err("failure qualification did not restore the original remote head".into());
+    }
+    let after_versions: Vec<_> = primary
+        .list_saves(rom_id)?
+        .into_iter()
+        .filter(|save| save.slot.as_deref() == Some("autosave"))
+        .collect();
+    if after_versions.len() != versions.len()
+        || !after_versions
+            .iter()
+            .any(|save| save.content_hash.as_deref() == Some(source_md5.as_str()))
+        || !after_versions
+            .iter()
+            .any(|save| save.content_hash.as_deref() == Some(original_md5.as_str()))
+    {
+        return Err("failure qualification did not preserve both retained revisions".into());
+    }
+
+    qualify_outage_queue(workspace, rom_id, &primary, &version)?;
+    if fs::read(source)? != source_bytes {
+        return Err("live source changed during failure qualification".into());
+    }
+
+    let report = FailureQualificationReport {
+        schema_version: 1,
+        romm_version: version,
+        slot: "autosave",
+        extension: "sav",
+        size: source_bytes.len() as u64,
+        passed_checks: [
+            "two_distinct_devices",
+            "lost_response_reconciled",
+            "retry_did_not_duplicate",
+            "competing_device_returned_409",
+            "both_remote_revisions_preserved",
+            "remote_head_restored",
+            "outage_retry_survived_reopen",
+            "reconnect_cleared_retry",
+            "live_source_unchanged",
+            "traces_sanitized",
+        ],
+        response_loss_route: "/api/saves",
+        response_loss_status: 200,
+        response_loss_upload_posts: response_loss_posts,
+        conflict_route: "/api/saves",
+        conflict_status: 409,
+        response_loss_negotiated_uploads: response_loss_session.total_upload,
+        stale_negotiated_downloads: stale_session.total_download,
+        restore_negotiated_uploads: restore_session.total_upload,
+        hashes_matched: true,
+        retained_versions_before: versions.len(),
+        retained_versions_after: after_versions.len(),
+    };
+    println!("{}", serde_json::to_string_pretty(&report)?);
+    Ok(())
+}
+
+fn qualify_outage_queue(
+    workspace: &Path,
+    rom_id: i64,
+    client: &RomMClient,
+    expected_version: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let listener = TcpListener::bind("127.0.0.1:0")?;
+    let unavailable = listener.local_addr()?;
+    drop(listener);
+    if TcpStream::connect_timeout(&unavailable, Duration::from_millis(250)).is_ok() {
+        return Err("temporary-outage probe unexpectedly connected".into());
+    }
+
+    let database = workspace.join("retry-state.sqlite3");
+    let key = GameKey {
+        platform: Platform::NintendoDs,
+        rom_id: rom_id.to_string(),
+        slot: SlotId::from("autosave"),
+    };
+    let policy = BackoffPolicy {
+        base_delay_ms: 1,
+        maximum_delay_ms: 10,
+        maximum_attempts: 3,
+    };
+    let store = StateStore::open(&database)?;
+    let scheduled = schedule_retry_after_failure(
+        &store,
+        &key,
+        "upload",
+        1_000,
+        "temporary transport outage",
+        policy,
+    )?;
+    if !matches!(scheduled, RetryDisposition::Scheduled(ref entry) if entry.attempt_count == 1) {
+        return Err("temporary outage did not schedule the first durable retry".into());
+    }
+    drop(store);
+
+    let reopened = StateStore::open(&database)?;
+    let pending = reopened
+        .pending_retry(&key, "upload")?
+        .ok_or("queued retry did not survive database reopen")?;
+    if pending.attempt_count != 1 {
+        return Err("reopened retry queue has an unexpected attempt count".into());
+    }
+    if client.ensure_compatible()? != expected_version {
+        return Err("RomM version changed during outage reconnect qualification".into());
+    }
+    reopened.clear_retry(&key, "upload")?;
+    drop(reopened);
+
+    let verified = StateStore::open(&database)?;
+    if verified.pending_retry(&key, "upload")?.is_some() {
+        return Err("successful reconnect did not clear the durable retry".into());
+    }
+    Ok(())
+}
+
+fn revoke_disposable_device(
+    primary_credential_path: &Path,
+    competitor_credential_path: &Path,
+    rom_id: i64,
+    workspace: &Path,
+    allow_insecure_http: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let original_path = workspace.join("original-remote.sav");
+    let metadata = fs::symlink_metadata(&original_path)?;
+    if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
+        return Err("failure workspace original must be a regular non-symlink file".into());
+    }
+    let original_md5 = md5_hex(&fs::read(&original_path)?);
+    let primary_credential = CredentialStore::new(primary_credential_path.to_path_buf()).load()?;
+    let competitor_credential =
+        CredentialStore::new(competitor_credential_path.to_path_buf()).load()?;
+    if primary_credential.device_id == competitor_credential.device_id {
+        return Err("refusing to revoke the primary device credential".into());
+    }
+    if primary_credential.server_origin != competitor_credential.server_origin {
+        return Err("revocation credentials target different RomM origins".into());
+    }
+    let primary = authenticated_client(&primary_credential, allow_insecure_http)?;
+    let competitor = authenticated_client(&competitor_credential, allow_insecure_http)?;
+    let before = primary
+        .latest_save(rom_id, "autosave")?
+        .ok_or("remote head is missing before disposable-device revocation")?;
+    if before.content_hash.as_deref() != Some(original_md5.as_str()) {
+        return Err("remote head does not match the restored original; refusing revocation".into());
+    }
+
+    competitor.revoke_bound_device()?;
+    let rejected_status = match competitor.list_saves(rom_id) {
+        Err(RomMError::Api { status, .. }) if matches!(status, 401 | 403) => status,
+        Ok(_) => return Err("revoked disposable credential was still accepted".into()),
+        Err(error) => return Err(format!("unexpected post-revocation result: {error}").into()),
+    };
+    let after = primary
+        .latest_save(rom_id, "autosave")?
+        .ok_or("remote head disappeared after disposable-device revocation")?;
+    if after.content_hash.as_deref() != Some(original_md5.as_str()) {
+        return Err("disposable-device revocation changed the remote save head".into());
+    }
+
+    let report = RevocationQualificationReport {
+        schema_version: 1,
+        route: "/api/devices/{id}",
+        delete_status: 204,
+        revoked_credential_status: rejected_status,
+        primary_credential_accepted: true,
+        remote_head_unchanged: true,
+    };
+    println!("{}", serde_json::to_string_pretty(&report)?);
+    Ok(())
+}
+
 fn authenticated_client(
     credential: &DeviceCredential,
     allow_insecure_http: bool,
@@ -734,15 +1261,52 @@ struct QualificationReport {
     upload_post_count: usize,
 }
 
+#[derive(Serialize)]
+struct FailureQualificationReport {
+    schema_version: u32,
+    romm_version: String,
+    slot: &'static str,
+    extension: &'static str,
+    size: u64,
+    passed_checks: [&'static str; 10],
+    response_loss_route: &'static str,
+    response_loss_status: u16,
+    response_loss_upload_posts: usize,
+    conflict_route: &'static str,
+    conflict_status: u16,
+    response_loss_negotiated_uploads: u64,
+    stale_negotiated_downloads: u64,
+    restore_negotiated_uploads: u64,
+    hashes_matched: bool,
+    retained_versions_before: usize,
+    retained_versions_after: usize,
+}
+
+#[derive(Serialize)]
+struct RevocationQualificationReport {
+    schema_version: u32,
+    route: &'static str,
+    delete_status: u16,
+    revoked_credential_status: u16,
+    primary_credential_accepted: bool,
+    remote_head_unchanged: bool,
+}
+
 fn print_help() {
     println!(
         "Disposable RomM M2 qualification tool (Bazzite/Linux only)\n\n\
          Pair without exposing a token:\n\
            romm-m2-qualify pair <server-origin> <credentials.json> [--allow-insecure-http]\n\n\
+         Pair a separate disposable competitor device:\n\
+           romm-m2-qualify pair-disposable <server-origin> <credentials.json> \\\n             [--allow-insecure-http] --confirm-create-disposable-device\n\n\
          Qualify DS using a copied source and restore the original remote head:\n\
            romm-m2-qualify nds <credentials.json> <rom-id> <source.srm> <new-workspace> \\\n             [--allow-insecure-http] --confirm-disposable-romm-mutation\n\n\
          Recover the original remote head after an interrupted qualification:\n\
            romm-m2-qualify recover-nds <credentials.json> <rom-id> <source.srm> <existing-workspace> \\\n             [--allow-insecure-http] --confirm-disposable-romm-mutation\n\n\
+         Exercise lost-response, competing-device, and outage recovery:\n\
+           romm-m2-qualify failure-sync <primary.json> <competitor.json> <rom-id> \\\n             <source.srm> <new-workspace> [--allow-insecure-http] \\\n             --confirm-disposable-romm-mutation\n\n\
+         Revoke only the disposable competitor after failure-sync passes:\n\
+           romm-m2-qualify revoke-disposable <primary.json> <competitor.json> <rom-id> \\\n             <failure-workspace> [--allow-insecure-http] \\\n             --confirm-revoke-disposable-device\n\n\
          The NDS command never writes the source path. It performs one test upload,\n\
          restores the retained original head, and refuses slots with more than seven\n\
          existing versions."
