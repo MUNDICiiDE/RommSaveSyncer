@@ -194,16 +194,18 @@ Revocation is a manual user procedure and is not part of the M2 exit gate. RomM 
 
 After `failure-sync` has succeeded and its sanitized report is recorded, clean up the disposable competitor manually in the RomM web UI: delete the `RomM Save Sync M2 Disposable Competitor` device under **Devices** and revoke its token under **Client API Tokens**, then delete the local `m2-disposable-competitor.json` file. The same manual procedure applies if the primary Beelink credential ever needs to be withdrawn; the client then reports an authorization failure and requires re-pairing rather than retrying as if offline.
 
-## Remaining disposable RomM gate
+## M2 exit gate
 
-The M2 exit gate is not yet claimed. The guarded DS harness has passed the real-server bidirectional byte transfer, first-sync conflict, completion, retry deduplication and restoration portions. Before M2 is marked complete, complete the remaining disposable RomM 5.4.x checks for:
+The M2 exit gate passed on 2026-10-22. The guarded DS harness passed the real-server bidirectional byte transfer, first-sync conflict, completion, retry deduplication and restoration portions on 2026-10-15. The remaining disposable RomM 5.4.x checks then passed through `failure-sync`:
 
 1. retry after an intentionally lost live response, proving no duplicate version;
 2. a competing disposable-device slot change returning 409 and preserving both copies; and
 3. reconnect and queued retry after a temporary outage.
 
+On 2026-10-22, the Bazzite/Linux artifact from CI run 39887667231 (commit `39e187c`) completed `failure-sync` against the deployed RomM 5.4.0 server. The user reported that the run passed; the sanitized JSON report was not retained, so its operation counts, statuses and retained-version counts are not recorded here and this evidence is classified as user-reported.
+
 Device/token revocation was removed from the gate on 2026-10-22; see [Device and token revocation](#device-and-token-revocation).
 
 Initial upload into a truly empty slot remains an automated protocol fixture rather than part of this selected live-ROM exercise because Super Mario 64 DS already has retained history. If the milestone gate requires that case against the deployed server, create a separate disposable RomM ROM/save fixture instead of deleting this history.
 
-The evidence must record version, route template, status, operation counts, slot, extension, size and whether hashes matched. It must not contain server address, device ID, ROM title/ID, filename, token, authorization code, raw response body or save bytes.
+Future qualification evidence must record version, route template, status, operation counts, slot, extension, size and whether hashes matched; retain the sanitized report rather than relying on a pass/fail statement. It must not contain server address, device ID, ROM title/ID, filename, token, authorization code, raw response body or save bytes.

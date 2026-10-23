@@ -104,7 +104,7 @@ Build the **framework for multiple platforms from day one**. Enable automatic sy
 
 ## M2 — RomM protocol and sync integration
 
-**Status:** Deployed RomM 5.4 bidirectional autosave qualification passed on 2026-10-15; the remaining deployed failure-mode checks are pending.
+**Status:** Complete on 2026-10-22. Deployed RomM 5.4 bidirectional autosave qualification passed on 2026-10-15 and the deployed failure-mode qualification passed on 2026-10-22 (user-reported). No adapter is enabled for automatic writes and no live `.srm` was modified.
 
 **Objective:** Reliable two-way communication while preserving RomM's device/save-slot semantics.
 
@@ -123,7 +123,7 @@ Build the **framework for multiple platforms from day one**. Enable automatic sy
 
 **Exit gate:** Both directions work in a disposable test environment, repeated requests do not duplicate saves, and conflicts never overwrite either side.
 
-**Partial exit-gate evidence:** The Bazzite/Linux artifact built from commit `90b59b0` completed the guarded Nintendo DS qualification against the deployed RomM 5.4.0 server on 2026-10-15. Its sanitized report passed source immutability, baseline-free conflict classification, staged download verification, post-commit download confirmation, upload verification, repeated-upload deduplication, remote-head restoration and trace sanitization. It began with three retained versions and issued exactly two guarded upload POSTs: the disposable promotion and restoration of the retained original. An interrupted earlier attempt was recovered with the original remote head restored and the live `.srm` unchanged. M2 remains open for the lost-response, competing-device conflict and temporary-outage/reconnect checks listed in the integration guide. Device/token revocation was removed from the M2 gate on 2026-10-22 and is a manual user procedure in the RomM web UI, because RomM 5.4.0 device deletion does not invalidate the device's token.
+**Exit-gate evidence:** The Bazzite/Linux artifact built from commit `90b59b0` completed the guarded Nintendo DS qualification against the deployed RomM 5.4.0 server on 2026-10-15. Its sanitized report passed source immutability, baseline-free conflict classification, staged download verification, post-commit download confirmation, upload verification, repeated-upload deduplication, remote-head restoration and trace sanitization. It began with three retained versions and issued exactly two guarded upload POSTs: the disposable promotion and restoration of the retained original. An interrupted earlier attempt was recovered with the original remote head restored and the live `.srm` unchanged. The remaining lost-response retry, competing-device 409 conflict and temporary-outage/reconnect checks passed through `failure-sync`. On 2026-10-22, the Bazzite/Linux artifact from CI run 39887667231 (commit `39e187c`) completed `failure-sync` against the deployed RomM 5.4.0 server. The user reported that the run passed; the sanitized JSON report was not retained, so its operation counts, statuses and retained-version counts are not recorded here and this evidence is classified as user-reported. Device/token revocation was removed from the M2 gate on 2026-10-22 and is a manual user procedure in the RomM web UI, because RomM 5.4.0 device deletion does not invalidate the device's token.
 
 ## M3 — Multi-system emulator adapters
 
