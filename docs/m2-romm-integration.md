@@ -188,28 +188,21 @@ After approval in RomM, close RetroArch and run `failure-sync` with a new worksp
 
 The command establishes both device baselines, performs one real guarded upload while deliberately discarding its successful response, reconciles the visible head by hash, proves the retry issues no duplicate POST, verifies that the stale primary device receives HTTP 409, restores the retained original, and confirms both revisions remain present. It also exercises the durable SQLite retry queue through a local unreachable endpoint, closes and reopens the database to prove persistence, reconnects to the deployed RomM server, and clears the retry only after that compatibility check succeeds. The local outage probe never changes host networking and therefore cannot terminate SSH.
 
-Only after `failure-sync` succeeds, revoke the disposable competitor and prove its credential is rejected while the primary credential and restored remote head remain valid:
+## Device and token revocation
 
-```bash
-"$QUAL_BIN" revoke-disposable \
-  "$REAL_HOME/.config/romm-save-sync/credentials.json" \
-  "$REAL_HOME/.config/romm-save-sync/m2-disposable-competitor.json" \
-  ROM_ID \
-  "$REAL_HOME/romm-m2-failure-qualification" \
-  --allow-insecure-http \
-  --confirm-revoke-disposable-device
-```
+Revocation is a manual user procedure and is not part of the M2 exit gate. RomM 5.4.0 does not invalidate a client token when its device is deleted: `client_tokens.device_id` is a foreign key with `ON DELETE SET NULL`, and bearer-token resolution checks only the token hash, expiry and owner. `DELETE /api/devices/{id}` therefore unbinds the token but leaves it valid with its granted scopes until expiry. Only `DELETE /api/client-tokens/{id}` revokes a token, and it requires `me.write`, which this client deliberately does not request.
 
-Revocation deletes only the device bound to the disposable credential. Keep the now-revoked credential file until its sanitized report is recorded, then remove it through the normal user-controlled cleanup process.
+After `failure-sync` has succeeded and its sanitized report is recorded, clean up the disposable competitor manually in the RomM web UI: delete the `RomM Save Sync M2 Disposable Competitor` device under **Devices** and revoke its token under **Client API Tokens**, then delete the local `m2-disposable-competitor.json` file. The same manual procedure applies if the primary Beelink credential ever needs to be withdrawn; the client then reports an authorization failure and requires re-pairing rather than retrying as if offline.
 
 ## Remaining disposable RomM gate
 
 The M2 exit gate is not yet claimed. The guarded DS harness has passed the real-server bidirectional byte transfer, first-sync conflict, completion, retry deduplication and restoration portions. Before M2 is marked complete, complete the remaining disposable RomM 5.4.x checks for:
 
-1. device revocation and rejection of the revoked credential;
-2. retry after an intentionally lost live response, proving no duplicate version;
-3. a competing disposable-device slot change returning 409 and preserving both copies; and
-4. reconnect and queued retry after a temporary outage.
+1. retry after an intentionally lost live response, proving no duplicate version;
+2. a competing disposable-device slot change returning 409 and preserving both copies; and
+3. reconnect and queued retry after a temporary outage.
+
+Device/token revocation was removed from the gate on 2026-10-22; see [Device and token revocation](#device-and-token-revocation).
 
 Initial upload into a truly empty slot remains an automated protocol fixture rather than part of this selected live-ROM exercise because Super Mario 64 DS already has retained history. If the milestone gate requires that case against the deployed server, create a separate disposable RomM ROM/save fixture instead of deleting this history.
 

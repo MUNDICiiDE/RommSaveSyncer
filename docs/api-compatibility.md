@@ -82,7 +82,7 @@ The preferred device-authorization approval flow creates the device and bound to
 - Confirm endpoint and schema on the installed RomM version.
 - Decide which non-sensitive stable identifiers the Beelink should report.
 - Confirm registration does not accidentally adopt another logical installation.
-- Confirm disabling or deleting a device and token-revocation behavior in a disposable test account.
+- Device deletion and token revocation: resolved from the tagged 5.4.0 source on 2026-10-22. RomM 5.4.0 does not invalidate a client token when its device is deleted: `client_tokens.device_id` is a foreign key with `ON DELETE SET NULL`, and bearer-token resolution checks only the token hash, expiry and owner. `DELETE /api/devices/{id}` therefore unbinds the token but leaves it valid with its granted scopes until expiry. Only `DELETE /api/client-tokens/{id}` revokes a token, and it requires `me.write`, which this client deliberately does not request. Revocation is therefore a manual user procedure in the RomM web UI and is not an M2 gate.
 
 ## Negotiation
 

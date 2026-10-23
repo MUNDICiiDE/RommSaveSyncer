@@ -24,7 +24,6 @@ const SAVES_ROUTE: &str = "/api/saves";
 const SAVE_CONTENT_ROUTE: &str = "/api/saves/{id}/content";
 const SAVE_DOWNLOADED_ROUTE: &str = "/api/saves/{id}/downloaded";
 const COMPLETE_ROUTE: &str = "/api/sync/sessions/{id}/complete";
-const DEVICE_ROUTE: &str = "/api/devices/{id}";
 
 #[derive(Clone, Debug)]
 pub struct ClientConfig {
@@ -423,19 +422,6 @@ impl RomMClient {
         let stored: SaveRecord = decode_json(response, SAVES_ROUTE)?;
         validate_stored_save(&stored, rom_id, slot, &digest)?;
         Ok(UploadOutcome::Stored(stored))
-    }
-
-    /// Deletes the device bound to this credential, revoking all of its tokens.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error for version drift, authorization, or transport failure.
-    pub fn revoke_bound_device(&self) -> Result<(), RomMError> {
-        self.ensure_compatible()?;
-        let credential = self.credential()?;
-        let url = self.endpoint(&format!("/api/devices/{}", credential.device_id))?;
-        self.send("DELETE", DEVICE_ROUTE, self.http.delete(url))?;
-        Ok(())
     }
 
     /// Downloads without optimistic acknowledgement and verifies `RomM`'s `MD5`

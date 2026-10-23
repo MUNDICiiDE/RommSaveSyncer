@@ -30,7 +30,6 @@ use uuid::Uuid;
 const CONFIRMATION: &str = "--confirm-disposable-romm-mutation";
 const INSECURE_HTTP: &str = "--allow-insecure-http";
 const CONFIRM_DISPOSABLE_DEVICE: &str = "--confirm-create-disposable-device";
-const CONFIRM_REVOCATION: &str = "--confirm-revoke-disposable-device";
 
 fn main() -> ExitCode {
     match run() {
@@ -166,42 +165,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 Path::new(competitor),
                 rom_id.parse()?,
                 Path::new(source),
-                Path::new(workspace),
-                true,
-            )
-        }
-        [
-            command,
-            primary,
-            competitor,
-            rom_id,
-            workspace,
-            confirmation,
-        ] if command == "revoke-disposable" && confirmation == CONFIRM_REVOCATION => {
-            revoke_disposable_device(
-                Path::new(primary),
-                Path::new(competitor),
-                rom_id.parse()?,
-                Path::new(workspace),
-                false,
-            )
-        }
-        [
-            command,
-            primary,
-            competitor,
-            rom_id,
-            workspace,
-            insecure,
-            confirmation,
-        ] if command == "revoke-disposable"
-            && insecure == INSECURE_HTTP
-            && confirmation == CONFIRM_REVOCATION =>
-        {
-            revoke_disposable_device(
-                Path::new(primary),
-                Path::new(competitor),
-                rom_id.parse()?,
                 Path::new(workspace),
                 true,
             )
@@ -909,62 +872,6 @@ fn qualify_outage_queue(
     Ok(())
 }
 
-fn revoke_disposable_device(
-    primary_credential_path: &Path,
-    competitor_credential_path: &Path,
-    rom_id: i64,
-    workspace: &Path,
-    allow_insecure_http: bool,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let original_path = workspace.join("original-remote.sav");
-    let metadata = fs::symlink_metadata(&original_path)?;
-    if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
-        return Err("failure workspace original must be a regular non-symlink file".into());
-    }
-    let original_md5 = md5_hex(&fs::read(&original_path)?);
-    let primary_credential = CredentialStore::new(primary_credential_path.to_path_buf()).load()?;
-    let competitor_credential =
-        CredentialStore::new(competitor_credential_path.to_path_buf()).load()?;
-    if primary_credential.device_id == competitor_credential.device_id {
-        return Err("refusing to revoke the primary device credential".into());
-    }
-    if primary_credential.server_origin != competitor_credential.server_origin {
-        return Err("revocation credentials target different RomM origins".into());
-    }
-    let primary = authenticated_client(&primary_credential, allow_insecure_http)?;
-    let competitor = authenticated_client(&competitor_credential, allow_insecure_http)?;
-    let before = primary
-        .latest_save(rom_id, "autosave")?
-        .ok_or("remote head is missing before disposable-device revocation")?;
-    if before.content_hash.as_deref() != Some(original_md5.as_str()) {
-        return Err("remote head does not match the restored original; refusing revocation".into());
-    }
-
-    competitor.revoke_bound_device()?;
-    let rejected_status = match competitor.list_saves(rom_id) {
-        Err(RomMError::Api { status, .. }) if matches!(status, 401 | 403) => status,
-        Ok(_) => return Err("revoked disposable credential was still accepted".into()),
-        Err(error) => return Err(format!("unexpected post-revocation result: {error}").into()),
-    };
-    let after = primary
-        .latest_save(rom_id, "autosave")?
-        .ok_or("remote head disappeared after disposable-device revocation")?;
-    if after.content_hash.as_deref() != Some(original_md5.as_str()) {
-        return Err("disposable-device revocation changed the remote save head".into());
-    }
-
-    let report = RevocationQualificationReport {
-        schema_version: 1,
-        route: "/api/devices/{id}",
-        delete_status: 204,
-        revoked_credential_status: rejected_status,
-        primary_credential_accepted: true,
-        remote_head_unchanged: true,
-    };
-    println!("{}", serde_json::to_string_pretty(&report)?);
-    Ok(())
-}
-
 fn authenticated_client(
     credential: &DeviceCredential,
     allow_insecure_http: bool,
@@ -1282,16 +1189,6 @@ struct FailureQualificationReport {
     retained_versions_after: usize,
 }
 
-#[derive(Serialize)]
-struct RevocationQualificationReport {
-    schema_version: u32,
-    route: &'static str,
-    delete_status: u16,
-    revoked_credential_status: u16,
-    primary_credential_accepted: bool,
-    remote_head_unchanged: bool,
-}
-
 fn print_help() {
     println!(
         "Disposable RomM M2 qualification tool (Bazzite/Linux only)\n\n\
@@ -1305,8 +1202,6 @@ fn print_help() {
            romm-m2-qualify recover-nds <credentials.json> <rom-id> <source.srm> <existing-workspace> \\\n             [--allow-insecure-http] --confirm-disposable-romm-mutation\n\n\
          Exercise lost-response, competing-device, and outage recovery:\n\
            romm-m2-qualify failure-sync <primary.json> <competitor.json> <rom-id> \\\n             <source.srm> <new-workspace> [--allow-insecure-http] \\\n             --confirm-disposable-romm-mutation\n\n\
-         Revoke only the disposable competitor after failure-sync passes:\n\
-           romm-m2-qualify revoke-disposable <primary.json> <competitor.json> <rom-id> \\\n             <failure-workspace> [--allow-insecure-http] \\\n             --confirm-revoke-disposable-device\n\n\
          The NDS command never writes the source path. It performs one test upload,\n\
          restores the retained original head, and refuses slots with more than seven\n\
          existing versions."

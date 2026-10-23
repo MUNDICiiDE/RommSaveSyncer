@@ -150,14 +150,6 @@ fn json(status: u16, body: &str) -> Option<ResponseSpec> {
     })
 }
 
-fn empty(status: u16) -> ResponseSpec {
-    ResponseSpec {
-        status,
-        content_type: "application/json",
-        body: Vec::new(),
-    }
-}
-
 fn heartbeat(version: &str) -> Step {
     Step {
         method: "GET",
@@ -327,36 +319,6 @@ fn qualification_response_loss_reconciles_the_live_success_without_duplicate_pos
             .count(),
         1
     );
-}
-
-#[test]
-fn deleting_the_bound_device_revokes_its_credential() {
-    let server = ScriptServer::start(vec![
-        heartbeat("5.4.0"),
-        Step {
-            method: "DELETE",
-            path_contains: "/api/devices/beelink-test-device",
-            body_contains: None,
-            response: Some(empty(204)),
-        },
-        Step {
-            method: "GET",
-            path_contains: "/api/saves?rom_id=1234",
-            body_contains: None,
-            response: json(401, r#"{"detail":"Unauthorized"}"#),
-        },
-    ]);
-    let client = client(&server.origin);
-
-    client
-        .revoke_bound_device()
-        .expect("bound device deletion should succeed");
-    let error = client
-        .list_saves(1234)
-        .expect_err("the deleted device token must be rejected");
-
-    assert!(matches!(error, RomMError::Api { status: 401, .. }));
-    server.finish();
 }
 
 #[test]

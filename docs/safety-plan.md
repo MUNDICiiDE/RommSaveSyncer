@@ -58,7 +58,7 @@ Every captured fact should include target, timestamp, command/source, sanitized 
 - Use exclusive creation for first write and same-filesystem atomic replacement for refresh. Revalidate owner, type and mode before every read.
 - Pairing and refresh responses flow directly from the daemon's authenticated client to this store. The WebView, command-line arguments, environment variables, logs, exports and SQLite never receive token material.
 - Do not include the plaintext credential file in automatic configuration backups. A user-directed migration must warn that it contains a bearer credential.
-- On disconnect, revoke or delete the RomM device credential first where possible, then unlink the local file. Do not claim secure erasure on SSD/Btrfs storage.
+- Disconnect is a manual user procedure: revoke the token under **Client API Tokens** in the RomM web UI (deleting the device alone does not invalidate its token in RomM 5.4.0), optionally delete the device, then unlink the local file. The client does not request `me.write` and so cannot revoke its own token. Do not claim secure erasure on SSD/Btrfs storage.
 - Secret Service may be added as a Desktop-only convenience but can never be required for Gaming Mode synchronization. `systemd-creds` is deferred because TPM-only is invalid for UID-scoped credentials and this target has no initialized host credential key.
 - The mode-`0600` design protects against other OS accounts, not malicious processes already running as the same user. Document this threat boundary and preserve least-privilege RomM scopes and revocability.
 
