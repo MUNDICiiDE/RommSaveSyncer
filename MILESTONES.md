@@ -127,6 +127,8 @@ Build the **framework for multiple platforms from day one**. Enable automatic sy
 
 ## M3 — Multi-system emulator adapters
 
+**Status:** In progress. The adapter framework, DS/GBA RetroArch battery and Dolphin GameCube GCI adapters, readiness inventory, synthetic fixtures and the `romm-m3-qualify` Bazzite harness were committed on 2026-10-23. Bazzite target qualification has not run; no configuration is enabled for automatic writes. See [docs/m3-adapters.md](docs/m3-adapters.md).
+
 **Objective:** Validate a broad framework against different real save models.
 
 ### Proposed staged adapter rollout
@@ -140,12 +142,12 @@ Build the **framework for multiple platforms from day one**. Enable automatic sy
 
 ### Work items
 
-- [ ] Create automated fixtures with normal, missing, malformed, conflicting and multi-file saves for each adapter class.
-- [ ] Test region/revision mismatches and multi-disc naming.
-- [ ] Keep shared memory-card and incompatible save-state configurations disabled by default.
-- [ ] Add platform readiness status and reasons for blocked configurations.
-- [ ] Record matrix of platforms/emulators/configuration versions verified in actual use.
-- [ ] Keep the adapter API and inventory capable of representing all 12 target platforms while enabling each concrete platform/emulator configuration only after its own validation gate passes.
+- [x] Create automated fixtures with normal, missing, malformed, conflicting and multi-file saves for each adapter class.
+- [x] Test region/revision mismatches and multi-disc naming.
+- [x] Keep shared memory-card and incompatible save-state configurations disabled by default.
+- [x] Add platform readiness status and reasons for blocked configurations.
+- [ ] Record matrix of platforms/emulators/configuration versions verified in actual use. The matrix exists in `docs/m3-adapters.md`; its "verified in actual use" rows await Bazzite qualification reports.
+- [x] Keep the adapter API and inventory capable of representing all 12 target platforms while enabling each concrete platform/emulator configuration only after its own validation gate passes.
 
 **Deliverables:** Emulator adapter modules, validation fixtures, compatibility matrix, documentation.
 

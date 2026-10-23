@@ -227,7 +227,12 @@ fn sha256_fingerprint(digest: String) -> Fingerprint {
     Fingerprint::new(HashAlgorithm::Sha256, digest)
 }
 
-fn parse_platform(value: &str) -> Result<Platform, CoreError> {
+/// Parses a `RomM` platform slug for one of the twelve target platforms.
+///
+/// # Errors
+///
+/// Returns an error for an unknown slug.
+pub fn parse_platform(value: &str) -> Result<Platform, CoreError> {
     match value {
         "nds" => Ok(Platform::NintendoDs),
         "gba" => Ok(Platform::GameBoyAdvance),

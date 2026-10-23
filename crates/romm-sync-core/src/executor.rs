@@ -133,6 +133,17 @@ pub trait ExecutionHook {
     ///
     /// Returns an error to simulate or report a replacement failure.
     fn before_replace(&self, index: usize, destination: &Path) -> Result<(), CoreError>;
+
+    /// Validates a downloaded payload's adapter-specific format before any
+    /// byte is staged. Hooks without format knowledge accept every payload;
+    /// hash, size, and member-mapping checks still apply afterwards.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable, sanitized detail when the payload must be rejected.
+    fn validate_payload(&self, _key: &GameKey, _payload: &SavePayload) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -542,6 +553,15 @@ impl GuardedExecutor {
             _ => unreachable!(),
         };
         let payload = remote.download(&request.planned.key, &expected_remote)?;
+        if let Err(detail) = hook.validate_payload(&request.planned.key, &payload) {
+            return self.reject(
+                store,
+                &request.planned.key,
+                RejectionCode::PayloadInvalid,
+                &detail,
+                Some(journal_id),
+            );
+        }
         let live_root = Path::new(&preconditions.root.resolved_path);
         let stage_path = live_root
             .join(".romm-autosync-staging")

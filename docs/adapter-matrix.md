@@ -4,7 +4,7 @@
 
 **Audit date:** 2026-10-14
 
-**Status:** M0 classification approved 2026-10-14; no adapter is enabled for automatic writes
+**Status:** M0 classification approved 2026-10-14; no adapter is enabled for automatic writes. The M3 readiness inventory and current stages are maintained in [m3-adapters.md](m3-adapters.md).
 
 ## Status definitions
 

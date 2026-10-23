@@ -950,9 +950,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "romm-sync-adapters"
+version = "0.1.0"
+dependencies = [
+ "romm-sync-core",
+ "romm-sync-planner",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
 name = "romm-sync-cli"
 version = "0.1.0"
 dependencies = [
+ "romm-sync-adapters",
  "romm-sync-core",
  "romm-sync-planner",
  "romm-sync-romm",

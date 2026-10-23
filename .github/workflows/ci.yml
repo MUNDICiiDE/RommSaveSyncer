@@ -46,10 +46,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@1.99.0
-      - name: Build qualification executable
-        run: cargo build --locked --release -p romm-sync-cli --bin romm-m2-qualify
-      - name: Smoke test qualification executable
-        run: target/release/romm-m2-qualify --help
+      - name: Build qualification executables
+        run: >-
+          cargo build --locked --release -p romm-sync-cli
+          --bin romm-m2-qualify --bin romm-m3-qualify --bin romm-sync
+      - name: Smoke test qualification executables
+        run: |
+          target/release/romm-m2-qualify --help
+          target/release/romm-m3-qualify --help
+          target/release/romm-sync adapters
       - name: Package executable and verification metadata
         env:
           QUALIFICATION_COMMIT: ${{ github.sha }}
@@ -62,10 +67,30 @@ jobs:
           sha256sum romm-m2-qualify > SHA256SUMS
           tar -czf ../romm-m2-qualify-linux-x86_64.tar.gz \
             BUILD-INFO.txt SHA256SUMS romm-m2-qualify
+      - name: Package M3 executables and verification metadata
+        env:
+          QUALIFICATION_COMMIT: ${{ github.sha }}
+        run: |
+          install -d -m 0755 dist/m3
+          install -m 0755 target/release/romm-m3-qualify dist/m3/romm-m3-qualify
+          install -m 0755 target/release/romm-sync dist/m3/romm-sync
+          printf 'commit=%s\ntarget=x86_64-unknown-linux-gnu\nrust=1.99.0\n' \
+            "$QUALIFICATION_COMMIT" > dist/m3/BUILD-INFO.txt
+          cd dist/m3
+          sha256sum romm-m3-qualify romm-sync > SHA256SUMS
+          tar -czf ../romm-m3-qualify-linux-x86_64.tar.gz \
+            BUILD-INFO.txt SHA256SUMS romm-m3-qualify romm-sync
       - name: Publish qualification executable
         uses: actions/upload-artifact@v7
         with:
           path: dist/romm-m2-qualify-linux-x86_64.tar.gz
+          archive: false
+          if-no-files-found: error
+          retention-days: 14
+      - name: Publish M3 qualification executables
+        uses: actions/upload-artifact@v7
+        with:
+          path: dist/romm-m3-qualify-linux-x86_64.tar.gz
           archive: false
           if-no-files-found: error
           retention-days: 14

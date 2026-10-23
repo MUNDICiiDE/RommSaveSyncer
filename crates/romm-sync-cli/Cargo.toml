@@ -14,7 +14,12 @@ path = "src/main.rs"
 name = "romm-m2-qualify"
 path = "src/m2_qualify.rs"
 
+[[bin]]
+name = "romm-m3-qualify"
+path = "src/m3_qualify.rs"
+
 [dependencies]
+romm-sync-adapters = { path = "../romm-sync-adapters" }
 romm-sync-core = { path = "../romm-sync-core" }
 romm-sync-planner = { path = "../romm-sync-planner" }
 romm-sync-romm = { path = "../romm-sync-romm" }

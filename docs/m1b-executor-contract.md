@@ -69,7 +69,7 @@ Each game/platform/slot has a cross-process nonblocking file lock. A stale guard
 
 ## Download and rollback protocol
 
-Downloads are staged beneath the destination filesystem. The payload manifest, size, and group SHA-256 are verified before the live path is touched. Existing files receive a copied and verified routine backup, then the journal advances through `prepared`, `staged`, `backed_up`, and `replacing`. Each member is replaced from the same filesystem and the completed live group is re-hashed before the baseline is committed.
+Since M3, `ExecutionHook::validate_payload` lets an adapter reject a downloaded payload's format with `payload_invalid` before anything is staged. Its default accepts every payload. Downloads are staged beneath the destination filesystem. The payload manifest, size, and group SHA-256 are verified before the live path is touched. Existing files receive a copied and verified routine backup, then the journal advances through `prepared`, `staged`, `backed_up`, and `replacing`. Each member is replaced from the same filesystem and the completed live group is re-hashed before the baseline is committed.
 
 On Bazzite/Linux, a single-file replacement uses same-filesystem `rename`, which is atomic. A multi-file group cannot be atomically committed as one filesystem operation; it is protected by a durable journal, a complete verified group backup, fail-fast replacement, and full-group rollback. Behavior on Windows is not a project requirement and is not qualified or supported.
 

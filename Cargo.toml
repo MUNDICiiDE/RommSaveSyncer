@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/romm-sync-adapters",
     "crates/romm-sync-cli",
     "crates/romm-sync-core",
     "crates/romm-sync-planner",
