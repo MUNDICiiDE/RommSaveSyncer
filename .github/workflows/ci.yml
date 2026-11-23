@@ -43,6 +43,9 @@ jobs:
       - name: Check (tests, ktlint, detekt, lint; builds sigil's JNI library with gcc)
         run: chmod +x gradlew && ./gradlew check
 
+      - name: Integration tests against the pinned RomM in Docker (Docker is preinstalled on ubuntu-latest)
+        run: ./gradlew integrationTest -Promm=docker
+
       - name: Build the Linux distributable and tar it
         run: |
           ./gradlew :desktop:app:createReleaseDistributable

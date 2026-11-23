@@ -24,6 +24,7 @@ Gradle finds CMake through `-Pcmake.path=...`, the `CMAKE` environment variable,
 
 ```sh
 ./gradlew check                                    # unit tests, ktlint, detekt, Android lint
+./gradlew integrationTest -Promm=docker            # RomM 5.4.1 in Docker (needs Docker running); see testing/romm-harness
 ./gradlew :desktop:app:run                         # hello window
 ./gradlew :desktop:app:createReleaseDistributable  # app folder with bundled JRE (tar it for Linux)
 ./gradlew :desktop:app:packageReleaseMsi           # Windows installer (Compose Gradle plugin downloads WiX itself)

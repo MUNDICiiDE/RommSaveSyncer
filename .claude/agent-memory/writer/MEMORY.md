@@ -1,1 +1,2 @@
 - [Build gotchas](build-gotchas.md) — M1 toolchain findings: task names, SDK 37, material3, AGP 9 KMP DSL, sigil MSVC JNI stub
+- [RomM harness gotchas](romm-harness-gotchas.md) — M2: RomM 5.4.1 CSRF/bootstrap/scan API, integration-test plugin, detekt traps, shell traps

@@ -39,6 +39,10 @@ gradlePlugin {
             id = "rommsavesyncer.android-app"
             implementationClass = "AndroidAppConventionPlugin"
         }
+        register("integrationTest") {
+            id = "rommsavesyncer.integration-test"
+            implementationClass = "IntegrationTestConventionPlugin"
+        }
         register("sigilHostJni") {
             id = "rommsavesyncer.sigil-host-jni"
             implementationClass = "SigilHostJniConventionPlugin"

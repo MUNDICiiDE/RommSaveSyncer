@@ -26,3 +26,6 @@ testing/fixtures/real-saves/*
 
 # Claude Code local settings
 .claude/settings.local.json
+
+# Fixture ROM library written for the manual docker-compose.yml stack
+testing/romm-harness/manual/

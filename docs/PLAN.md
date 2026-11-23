@@ -5,7 +5,7 @@ Status: **approved 2026-11-22** (Q1 answered: Kotlin, bundled-JRE folder on Bazz
 ## Milestones
 
 - [x] M1: Scaffolding and CI
-- [ ] M2: Dockerized RomM test harness
+- [x] M2: Dockerized RomM test harness
 - [ ] M3: RomM client and device authorization
 - [ ] S1: Spike: Bazzite Game Mode (gamescope prompt, Secret Service, Steam shortcut)
 - [ ] S2: Spike: Thor unwrapped-launch game identification and exit detection
