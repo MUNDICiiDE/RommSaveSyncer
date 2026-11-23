@@ -31,7 +31,9 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools platforms;android-37 build-tools;36.0.0
 
       - uses: gradle/actions/setup-gradle@v5
 
@@ -74,17 +76,11 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools platforms;android-37 build-tools;36.0.0
 
       - uses: gradle/actions/setup-gradle@v5
-
-      - name: Make sure the WiX Toolset (needed by jpackage for MSI) is available
-        shell: pwsh
-        run: |
-          if (-not (Get-Command candle.exe -ErrorAction SilentlyContinue)) {
-            choco install wixtoolset --no-progress -y
-            Add-Content $env:GITHUB_PATH 'C:\Program Files (x86)\WiX Toolset v3.14\bin'
-          }
 
       - name: Check (tests, ktlint, detekt, lint; builds sigil's JNI library with MSVC)
         run: ./gradlew check
