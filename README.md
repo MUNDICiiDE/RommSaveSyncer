@@ -26,7 +26,7 @@ Gradle finds CMake through `-Pcmake.path=...`, the `CMAKE` environment variable,
 ./gradlew check                                    # unit tests, ktlint, detekt, Android lint
 ./gradlew :desktop:app:run                         # hello window
 ./gradlew :desktop:app:createReleaseDistributable  # app folder with bundled JRE (tar it for Linux)
-./gradlew :desktop:app:packageReleaseMsi           # Windows installer (needs the WiX Toolset 3.x)
+./gradlew :desktop:app:packageReleaseMsi           # Windows installer (Compose Gradle plugin downloads WiX itself)
 ./gradlew :android:app:assembleDebug               # debug APK
 ./gradlew ktlintFormat                             # fix formatting
 ```
