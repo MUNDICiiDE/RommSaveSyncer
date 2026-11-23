@@ -1,7 +1,15 @@
 package dev.rommsavesyncer.testing.harness
 
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import java.net.URI
 import java.net.URLEncoder
 import java.net.http.HttpClient
@@ -32,6 +40,50 @@ class RommAdminClient(
         path: String,
         body: JsonElement? = null,
     ): RommResponse = request("POST", path, body?.toString())
+
+    /**
+     * Approves a device pairing the way the web UI's `/pair/device` page does: `POST /api/auth/device/approve`
+     * (scope `me.write`). RomM creates the device and a client token bound to it, which the device's next poll
+     * of `/api/auth/device/token` receives. [scopes] must be a subset of what the device asked for.
+     * [expiresIn] is `30d`, `90d`, `1y` or null for a token that never expires. Returns the new device's id.
+     */
+    fun approveDevice(
+        userCode: String,
+        scopes: List<String>,
+        deviceName: String? = null,
+        expiresIn: String? = null,
+    ): String {
+        val body =
+            buildJsonObject {
+                put("user_code", userCode)
+                put("approved_scopes", JsonArray(scopes.map { JsonPrimitive(it) }))
+                if (deviceName != null) put("device_name", deviceName)
+                if (expiresIn != null) put("expires_in", expiresIn)
+            }
+        val response = postJson("/api/auth/device/approve", body).requireSuccess("Approving device $userCode")
+        return response
+            .jsonObject()
+            .getValue("device_id")
+            .jsonPrimitive.content
+    }
+
+    /** Denies a device pairing (`POST /api/auth/device/deny`); the device's next poll gets `access_denied`. */
+    fun denyDevice(userCode: String) {
+        val body = buildJsonObject { put("user_code", userCode) }
+        postJson("/api/auth/device/deny", body).requireSuccess("Denying device $userCode")
+    }
+
+    /** Revokes every client token bound to [deviceId] (`DELETE /api/client-tokens/{id}`); later requests get 401. */
+    fun revokeDeviceTokens(deviceId: String) {
+        val tokens = get("/api/client-tokens").requireSuccess("Listing client tokens").json().jsonArray
+        tokens
+            .map { it.jsonObject }
+            .filter { it["device_id"]?.jsonPrimitive?.contentOrNull == deviceId }
+            .forEach {
+                val tokenId = it.getValue("id").jsonPrimitive.int
+                request("DELETE", "/api/client-tokens/$tokenId").requireSuccess("Revoking token $tokenId")
+            }
+    }
 
     fun request(
         method: String,

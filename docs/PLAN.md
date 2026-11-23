@@ -6,7 +6,7 @@ Status: **approved 2026-11-22** (Q1 answered: Kotlin, bundled-JRE folder on Bazz
 
 - [x] M1: Scaffolding and CI
 - [x] M2: Dockerized RomM test harness
-- [ ] M3: RomM client and device authorization
+- [x] M3: RomM client and device authorization
 - [ ] S1: Spike: Bazzite Game Mode (gamescope prompt, Secret Service, Steam shortcut)
 - [ ] S2: Spike: Thor unwrapped-launch game identification and exit detection
 - [ ] M4: Local state DB, secret store, outbox
@@ -262,7 +262,8 @@ RommSaveSyncer/
 - Scope: a throwaway APK that logs:
   - UsageStats events;
   - Shizuku `ps` liveness;
-  - candidate "current game" sources: RetroArch `content_history.lpl`, emulator config or recent-files lists, FileObserver hits.
+  - candidate "current game" sources: RetroArch `content_history.lpl`, emulator config or recent-files lists, FileObserver hits;
+  - where NeoStation stores its scraped media (box art, fanart), and whether it is readable from shared storage.
 - Acceptance: for each Thor emulator, written findings on how the game and its exit are detected, plus the Thor's Android version.
 - Manual: the user runs it on the Thor.
 - Depends on: M1.
@@ -429,7 +430,7 @@ RommSaveSyncer/
 
 ### M18: Thor bottom screen
 - Scope:
-  - Presentation while a single-screen game runs: title/art, status, last sync, session timer;
+  - Presentation at the bottom screen's native 1240×1080 while a single-screen game runs: title, box art and the game's background art (fanart) behind a dark scrim, status, last sync, session timer. Artwork comes from RomM's own media for the matched game first; NeoStation's scraped media is an optional local source if S2 finds it in shared storage;
   - "newer on RomM — quit, then Download" prompt;
   - DS/3DS notifications instead of the dashboard;
   - hand the screen back to NeoStation after play. Outside play RommSaveSyncer has no visible window on either screen: it keeps running in the background (foreground service with a silent, minimised notification, which Android requires). The full GUI opens only when launched from the app drawer or the notification.
@@ -444,7 +445,9 @@ RommSaveSyncer/
 
 ## 9. Risks
 
-- **R1. RomM's rules differ from ours.** RomM 5.4.1 `comparison.py` decides a first sync with no history by **timestamp**, not by conflict, and the server can send `delete` operations. Mitigation: the client makes its own decisions from the decision table, tests pin 5.4.1 behaviour, and the app refuses older server versions.
+- **R1. RomM's rules differ from ours.** RomM 5.4.1 `comparison.py` decides a first sync with no history by **timestamp**, not by conflict, and the server can send `delete` operations. Mitigation: the client makes its own decisions from the decision table, tests pin 5.4.1 behaviour, and the app refuses older server versions. Found in M3:
+  - RomM pairs saves on only the newest row per slot, and every slotted upload creates a new row. So a device's sync history doesn't carry over to another device's newer upload, and "both changed" comes back as `upload`, not `conflict`.
+  - The upload response's `updated_at` has microseconds, but the stored value (TIMESTAMP on MariaDB) is whole seconds. Sync baselines (M4+) must take the server timestamp from a re-read or from negotiate, never from the upload response.
 - **R2. The Thor can't easily tell which game started.** Android reports only the emulator's package, not the ROM. Mitigation: spike S2, a "Which game?" prompt as fallback, and NeoStation #501 later.
 - **R3. Shizuku must be restarted after each reboot** unless the device is rooted. Without it there's no `Android/data` access and no reliable exit detection. RetroArch's HOME button doesn't flush SRAM (sigil `saves-on-android.md`).
 - **R4. Game Mode visibility.** The gamescope prompt might not show, and the Secret Service might be locked in Game Mode. Mitigation: spike S1.

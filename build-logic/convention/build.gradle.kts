@@ -10,6 +10,7 @@ java {
 
 dependencies {
     implementation(libs.kotlin.gradle.plugin)
+    implementation(libs.kotlin.serialization.plugin)
     implementation(libs.kotlin.compose.compiler.plugin)
     implementation(libs.compose.gradle.plugin)
     implementation(libs.android.gradle.plugin)
@@ -30,6 +31,10 @@ gradlePlugin {
         register("kmpLibrary") {
             id = "rommsavesyncer.kmp-library"
             implementationClass = "KmpLibraryConventionPlugin"
+        }
+        register("serialization") {
+            id = "rommsavesyncer.serialization"
+            implementationClass = "SerializationConventionPlugin"
         }
         register("compose") {
             id = "rommsavesyncer.compose"
