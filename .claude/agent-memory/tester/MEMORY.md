@@ -1,0 +1,2 @@
+- [Commands](commands.md) — exact check/build/launch commands, timings, jpackage child-process quirk, WiX auto-download
+- [Writer patterns](writer-patterns.md) — recurring Writer defects, fragile build-logic areas to regression-check

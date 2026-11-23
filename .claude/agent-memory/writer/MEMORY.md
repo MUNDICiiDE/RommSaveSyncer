@@ -1,0 +1,1 @@
+- [Build gotchas](build-gotchas.md) — M1 toolchain findings: task names, SDK 37, material3, AGP 9 KMP DSL, sigil MSVC JNI stub

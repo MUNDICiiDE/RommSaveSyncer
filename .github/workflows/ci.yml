@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  linux:
+    name: Linux (check, tarball, APK)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      - name: Install native libraries for the Compose UI test
+        run: sudo apt-get update && sudo apt-get install -y libgl1 libfontconfig1 libxrender1 libxtst6 libxi6
+
+      - name: Check (tests, ktlint, detekt, lint; builds sigil's JNI library with gcc)
+        run: chmod +x gradlew && ./gradlew check
+
+      - name: Build the Linux distributable and tar it
+        run: |
+          ./gradlew :desktop:app:createReleaseDistributable
+          tar -czf RommSaveSyncer-linux-x64.tar.gz -C desktop/app/build/compose/binaries/main-release/app RommSaveSyncer
+
+      - name: Build the debug APK
+        run: ./gradlew :android:app:assembleDebug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RommSaveSyncer-linux-x64
+          path: RommSaveSyncer-linux-x64.tar.gz
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RommSaveSyncer-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+  windows:
+    name: Windows (check, MSI)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      - name: Make sure the WiX Toolset (needed by jpackage for MSI) is available
+        shell: pwsh
+        run: |
+          if (-not (Get-Command candle.exe -ErrorAction SilentlyContinue)) {
+            choco install wixtoolset --no-progress -y
+            Add-Content $env:GITHUB_PATH 'C:\Program Files (x86)\WiX Toolset v3.14\bin'
+          }
+
+      - name: Check (tests, ktlint, detekt, lint; builds sigil's JNI library with MSVC)
+        run: ./gradlew check
+
+      - name: Build the MSI
+        run: ./gradlew :desktop:app:packageReleaseMsi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RommSaveSyncer-windows-msi
+          path: desktop/app/build/compose/binaries/main-release/msi/*.msi
+          if-no-files-found: error

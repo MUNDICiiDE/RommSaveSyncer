@@ -1,0 +1,28 @@
+# Gradle / build outputs
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+.kotlin/
+
+# Local machine configuration
+local.properties
+
+# IDE files
+.idea/
+*.iml
+.vscode/
+.fleet/
+.DS_Store
+
+# Android
+*.apk
+*.aab
+captures/
+.cxx/
+
+# Real save files are never committed (only their manifest)
+testing/fixtures/real-saves/*
+!testing/fixtures/real-saves/manifest.*
+
+# Claude Code local settings
+.claude/settings.local.json
